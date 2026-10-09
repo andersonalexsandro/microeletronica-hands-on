@@ -1,0 +1,38 @@
+# ============================================================
+# Tudo que as ferramentas geram vai para build/ (ver Makefile)
+# ============================================================
+build/
+
+# Restos caso alguma ferramenta seja rodada fora do Makefile
+csrc/
+simv
+simv.daidir/
+*.daidir/
+AN.DB/
+work.lib++/
+64/
+ucli.key
+vc_hdrs.h
+novas*
+verdi*/
+.vlogan*
+*.fsdb
+*.vpd
+*.vcd
+*.vvp
+obj_dir/
+DVEfiles/
+command.log
+default.svf
+alib-*/
+FM_WORK/
+fm_shell_command.log
+formality_svf.txt
+__pycache__/
+
+# ============================================================
+# Bibliotecas / PDK (licenciadas - NUNCA versionar)
+# ============================================================
+libs/
+*.db
+*.sldb

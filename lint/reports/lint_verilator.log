@@ -1,0 +1,3 @@
+// Verilator 5.020 2024-01-01 rev (Debian 5.020-1)
+// verilator --lint-only -Wall --top-module aes_sbox <fontes de rtl/rtl.f>
+// resultado: nenhum erro ou aviso
