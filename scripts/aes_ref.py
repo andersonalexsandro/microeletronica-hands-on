@@ -4,12 +4,14 @@ Modelo de referencia do AES (FIPS-197) em Python puro, sem dependencias.
 
 Uso no projeto:
   - conferir os vetores de teste do padrao (FIPS-197, Apendices B e C);
+  - gerar os vetores lidos pelos testbenches (--vectors, ou make vectors);
   - gerar valores intermediarios por rodada para os testes unitarios do RTL
-    (semana 3) e da expansao de chave (semana 4);
+    e da expansao de chave;
   - imprimir a S-box usada no RTL.
 
 Exemplos:
   python3 scripts/aes_ref.py                      # auto-teste com os vetores do FIPS-197
+  python3 scripts/aes_ref.py --vectors tb/vectors # gera os vetores dos testbenches
   python3 scripts/aes_ref.py --trace              # rodada a rodada do Apendice B
   python3 scripts/aes_ref.py --trace --key 000102030405060708090a0b0c0d0e0f \
                              --pt 00112233445566778899aabbccddeeff
@@ -21,6 +23,7 @@ ocupa a linha r = i % 4 e a coluna c = i // 4 (ordem por colunas, FIPS-197 3.4).
 """
 
 import argparse
+import os
 import sys
 
 # ---------------------------------------------------------------------------
@@ -223,6 +226,43 @@ def selftest():
     print("SELFTEST PASSED" if fails == 0 else f"SELFTEST FAILED ({fails} falhas)")
     return fails
 
+# ---------------------------------------------------------------------------
+# Vetores para os testbenches (lidos com $readmemh: um valor hex por token)
+# ---------------------------------------------------------------------------
+
+VECTORS_HEADER = "// Gerado por scripts/aes_ref.py --vectors (make vectors). Nao editar a mao.\n"
+
+
+def write_vectors(outdir):
+    """Escreve as tabelas da S-box e os estados por rodada do FIPS-197 em outdir."""
+    os.makedirs(outdir, exist_ok=True)
+
+    tables = (("sbox.hex", "S-box (FIPS-197, Figura 7)", SBOX),
+              ("inv_sbox.hex", "S-box inversa (FIPS-197, Figura 14)", INV_SBOX))
+    for fname, title, table in tables:
+        with open(os.path.join(outdir, fname), "w") as f:
+            f.write(VECTORS_HEADER)
+            f.write(f"// {title}: a linha da entrada x contem o valor da tabela para x.\n")
+            for x, y in enumerate(table):
+                f.write(f"{y:02x}  // {x:02x}\n")
+
+    # Exemplos de cifragem AES-128 (Apendices B e C.1): rodadas 1 a 10
+    with open(os.path.join(outdir, "fips197_rounds.hex"), "w") as f:
+        f.write(VECTORS_HEADER)
+        f.write("// Estados do exemplo de cifragem do FIPS-197, rodadas 1 a 10 (AES-128).\n")
+        f.write("// Por linha: start of round | after SubBytes | after ShiftRows\n")
+        for name, k, p, _ in FIPS_VECTORS[:2]:
+            t = []
+            encrypt(bytes.fromhex(p), bytes.fromhex(k), t)
+            state = {(rnd, step): s for rnd, step, s in t}
+            f.write(f"// {name}: key {k}, pt {p}\n")
+            for rnd in range(1, 11):
+                cols = " ".join(hx(state[(rnd, step)]) for step in ("start", "s_box", "s_row"))
+                f.write(f"{cols}  // r{rnd:02d}\n")
+
+    for fname in ("sbox.hex", "inv_sbox.hex", "fips197_rounds.hex"):
+        print(f"[vetores] {os.path.join(outdir, fname)}")
+
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -231,10 +271,13 @@ def main():
     ap.add_argument("--trace", action="store_true", help="imprime o estado rodada a rodada")
     ap.add_argument("--keyexp", action="store_true", help="imprime as palavras w[i] da expansao de chave")
     ap.add_argument("--sbox", action="store_true", help="imprime a S-box 16x16")
+    ap.add_argument("--vectors", metavar="DIR", help="gera os vetores dos testbenches em DIR")
     a = ap.parse_args()
 
     key, pt = bytes.fromhex(a.key), bytes.fromhex(a.pt)
-    if a.sbox:
+    if a.vectors:
+        write_vectors(a.vectors)
+    elif a.sbox:
         print("     " + " ".join(f"{c:x}".rjust(2) for c in range(16)))
         for r in range(16):
             print(f"{r:x}0 | " + " ".join(f"{SBOX[16 * r + c]:02x}" for c in range(16)))
