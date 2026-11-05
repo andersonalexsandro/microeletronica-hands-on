@@ -26,16 +26,21 @@ SNPS_ENV   := source $(SNPS_SETUP) >/dev/null 2>&1 || true;
 
 # Fontes RTL: lista unica em rtl/rtl.f (linhas com // sao comentario)
 RTL_SRCS := $(addprefix $(ROOT)/,$(shell sed -e 's://.*::' $(ROOT)/rtl/rtl.f))
-LINT_TOP ?= aes_sbox
+# Lint (Verilator): cada modulo de rtl/rtl.f e verificado como topo, pela
+# convencao "um modulo por arquivo, com o mesmo nome". Quando o minisoc_top
+# existir (semana 7), basta LINT_TOPS=minisoc_top.
+LINT_TOPS ?= $(basename $(notdir $(RTL_SRCS)))
 
 # Testes: todo tb/tb_*.sv e um testbench self-checking que imprime TEST PASSED/FAILED
 TESTS ?= $(sort $(basename $(notdir $(wildcard $(ROOT)/tb/tb_*.sv))))
 TB    ?= $(firstword $(TESTS))
+# Vetores de referencia lidos pelos testbenches ($readmemh), gerados por make vectors
+VEC_DIR := $(ROOT)/tb/vectors
 
 SIM_DIR  = $(BUILD)/$(TOOLS)/$(TB)
 LINT_LOG = $(ROOT)/lint/reports/lint_$(if $(filter synopsys,$(TOOLS)),vlogan,verilator).log
 
-.PHONY: all help env lint test sim wave ref clean
+.PHONY: all help env lint test sim wave ref vectors clean
 .DEFAULT_GOAL := all
 
 all: env lint test
@@ -49,6 +54,7 @@ help:
 	@echo "  make sim TB=x   roda um testbench (padrao: $(TB))"
 	@echo "  make wave TB=x  abre as ondas (GTKWave ou Verdi)"
 	@echo "  make ref        auto-teste do modelo de referencia (scripts/aes_ref.py)"
+	@echo "  make vectors    regenera os vetores dos testbenches (tb/vectors/)"
 	@echo "  make clean      apaga build/"
 	@echo "Ferramentas em uso: TOOLS=$(TOOLS)  (forcar com TOOLS=oss|synopsys)"
 
@@ -63,9 +69,13 @@ ifeq ($(TOOLS),synopsys)
 	    $(RTL_SRCS) 2>&1 | tee $(LINT_LOG)
 else
 	@{ echo "// $$(verilator --version)"; \
-	   echo "// verilator --lint-only -Wall --top-module $(LINT_TOP) <fontes de rtl/rtl.f>"; } > $(LINT_LOG)
-	verilator --lint-only -Wall --top-module $(LINT_TOP) $(RTL_SRCS) 2>&1 | tee -a $(LINT_LOG)
-	@echo "// resultado: nenhum erro ou aviso" >> $(LINT_LOG)
+	   echo "// verilator --lint-only -Wall --top-module <modulo> <fontes de rtl/rtl.f>"; } > $(LINT_LOG)
+	@for top in $(LINT_TOPS); do \
+	    echo "verilator --lint-only -Wall --top-module $$top"; \
+	    echo "// $$top" >> $(LINT_LOG); \
+	    verilator --lint-only -Wall --top-module $$top $(RTL_SRCS) 2>&1 | tee -a $(LINT_LOG); \
+	done
+	@echo "// resultado: nenhum erro ou aviso em $(words $(LINT_TOPS)) modulo(s)" >> $(LINT_LOG)
 endif
 	@echo "[LINT OK] relatorio em $(patsubst $(ROOT)/%,%,$(LINT_LOG))"
 
@@ -81,12 +91,13 @@ ifeq ($(TOOLS),synopsys)
 	        $(RTL_SRCS) $(ROOT)/tb/$(TB).sv && \
 	    vcs -full64 -debug_access+all -kdb $(TB) -o simv; } > compile.log 2>&1 \
 	    || { cat compile.log; echo "[FAIL] $(TB): erro de compilacao"; exit 1; }
-	@cd $(SIM_DIR) && $(SNPS_ENV) ./simv -l sim.log > /dev/null
+	@cd $(SIM_DIR) && $(SNPS_ENV) ./simv +VEC_DIR=$(VEC_DIR) -l sim.log > /dev/null
 else
-	@cd $(SIM_DIR) && iverilog -g2012 -Wall -s $(TB) -o $(TB).vvp \
+	@cd $(SIM_DIR) && echo "+timescale+1ns/1ps" > timescale.f && \
+	    iverilog -g2012 -Wall -c timescale.f -s $(TB) -o $(TB).vvp \
 	    $(RTL_SRCS) $(ROOT)/tb/$(TB).sv > compile.log 2>&1 \
 	    || { cat compile.log; echo "[FAIL] $(TB): erro de compilacao"; exit 1; }
-	@cd $(SIM_DIR) && vvp -n $(TB).vvp > sim.log
+	@cd $(SIM_DIR) && vvp -n $(TB).vvp +VEC_DIR=$(VEC_DIR) > sim.log
 endif
 	@if grep -q "TEST PASSED" $(SIM_DIR)/sim.log; then \
 	    echo "[PASS] $$(grep -m1 '^$(TB):' $(SIM_DIR)/sim.log || echo $(TB))"; \
@@ -104,6 +115,11 @@ endif
 # -------------------------------------------------- modelo de referencia ----
 ref:
 	python3 $(ROOT)/scripts/aes_ref.py
+
+# Os vetores ficam versionados em tb/vectors/, para que o make nao dependa do
+# Python. Depois de mudar o modelo, rode make vectors e confira o git diff.
+vectors:
+	python3 -B $(ROOT)/scripts/aes_ref.py --vectors $(VEC_DIR)
 
 clean:
 	rm -rf $(BUILD)
