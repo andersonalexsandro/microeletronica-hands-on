@@ -3,7 +3,10 @@
 // minisoc_aes_sbox
 // minisoc_aes_sub_bytes
 // minisoc_aes_shift_rows
+// minisoc_aes_mix_columns
+// minisoc_aes_add_round_key
 // minisoc_aes_inv_sbox
 // minisoc_aes_inv_sub_bytes
 // minisoc_aes_inv_shift_rows
-// resultado: nenhum erro ou aviso em 6 modulo(s)
+// minisoc_aes_inv_mix_columns
+// resultado: nenhum erro ou aviso em 9 modulo(s)

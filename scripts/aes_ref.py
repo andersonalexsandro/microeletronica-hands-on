@@ -13,6 +13,8 @@ Exemplos:
   python3 scripts/aes_ref.py                      # auto-teste com os vetores do FIPS-197
   python3 scripts/aes_ref.py --vectors tb/vectors # gera os vetores dos testbenches
   python3 scripts/aes_ref.py --trace              # rodada a rodada do Apendice B
+  python3 scripts/aes_ref.py --trace --decrypt --key 000102030405060708090a0b0c0d0e0f \
+                             --ct 69c4e0d86a7b0430d8cdb78070b4c55a   # cifra inversa, Ap. C.1
   python3 scripts/aes_ref.py --trace --key 000102030405060708090a0b0c0d0e0f \
                              --pt 00112233445566778899aabbccddeeff
   python3 scripts/aes_ref.py --keyexp --key 2b7e151628aed2a6abf7158809cf4f3c
@@ -24,6 +26,7 @@ ocupa a linha r = i % 4 e a coluna c = i // 4 (ordem por colunas, FIPS-197 3.4).
 
 import argparse
 import os
+import random
 import sys
 
 # ---------------------------------------------------------------------------
@@ -176,15 +179,33 @@ def encrypt(pt, key, trace=None):
     return s
 
 
-def decrypt(ct, key):
+def decrypt(ct, key, trace=None):
+    """Cifra inversa (FIPS-197 5.3). Com trace, registra os passos na mesma
+    nomenclatura do Apendice C.1: istart, is_row, is_box, ik_sch e ik_add,
+    com as rodadas numeradas de 1 a Nr na ordem em que sao executadas."""
     w, nr = key_expansion(key)
     s = add_round_key(list(ct), round_key(w, nr))
-    for rnd in range(nr - 1, -1, -1):
+    if trace is not None:
+        trace.append((0, "iinput", list(ct)))
+        trace.append((0, "ik_sch", round_key(w, nr)))
+    for rnd in range(1, nr + 1):
+        k = nr - rnd                                   # chave de rodada usada agora
+        if trace is not None:
+            trace.append((rnd, "istart", s))
         s = inv_shift_rows(s)
+        if trace is not None:
+            trace.append((rnd, "is_row", s))
         s = inv_sub_bytes(s)
-        s = add_round_key(s, round_key(w, rnd))
-        if rnd != 0:
+        if trace is not None:
+            trace.append((rnd, "is_box", s))
+        s = add_round_key(s, round_key(w, k))
+        if trace is not None:
+            trace.append((rnd, "ik_sch", round_key(w, k)))
+            trace.append((rnd, "ik_add", s))
+        if rnd != nr:
             s = inv_mix_columns(s)
+    if trace is not None:
+        trace.append((nr, "ioutput", s))
     return s
 
 # ---------------------------------------------------------------------------
@@ -204,9 +225,35 @@ FIPS_VECTORS = [
      "00112233445566778899aabbccddeeff", "8ea2b7ca516745bfeafc49904b496089"),
 ]
 
+# Valores intermediarios citados no texto dos padroes, conferidos no auto-teste
+KNOWN_VALUES = [
+    # (descricao, funcao que calcula, valor esperado)
+    ("FIPS-197 A.1: w[43]",
+     lambda: hx(key_expansion(bytes.fromhex(FIPS_VECTORS[0][1]))[0][43]), "b6630ca6"),
+    ("FIPS-197 C.1: chave da rodada 10",
+     lambda: hx(round_key(key_expansion(bytes.fromhex(FIPS_VECTORS[1][1]))[0], 10)),
+     "13111d7fe3944a17f307a78b4d2b30c5"),
+    ("FIPS-197 C.1: round[1].ik_add da cifra inversa",
+     lambda: _trace_value(decrypt, FIPS_VECTORS[1][3], FIPS_VECTORS[1][1], (1, "ik_add")),
+     "e9f74eec023020f61bf2ccf2353c21c7"),
+    ("FIPS-197 B: round[1].m_col",
+     lambda: _trace_value(encrypt, FIPS_VECTORS[0][2], FIPS_VECTORS[0][1], (1, "m_col")),
+     "046681e5e0cb199a48f8d37a2806264c"),
+    ("SP 800-38A F.1.1: ECB-AES128, bloco 1",
+     lambda: hx(encrypt(bytes.fromhex("6bc1bee22e409f96e93d7e117393172a"),
+                        bytes.fromhex(FIPS_VECTORS[0][1]))),
+     "3ad77bb40d7a3660a89ecaf32466ef97"),
+]
+
 
 def hx(b):
     return bytes(b).hex()
+
+
+def _trace_value(fn, data_hex, key_hex, where):
+    t = []
+    fn(bytes.fromhex(data_hex), bytes.fromhex(key_hex), t)
+    return hx({(r, s): v for r, s, v in t}[where])
 
 
 def selftest():
@@ -223,6 +270,11 @@ def selftest():
         ok = got == c and back == p
         fails += not ok
         print(f"[{'PASS' if ok else 'FAIL'}] {name}: cifra={got} decifra={'ok' if back == p else back}")
+    for name, fn, expected in KNOWN_VALUES:
+        got = fn()
+        ok = got == expected
+        fails += not ok
+        print(f"[{'PASS' if ok else 'FAIL'}] {name} = {got}" + ("" if ok else f" (esperado {expected})"))
     print("SELFTEST PASSED" if fails == 0 else f"SELFTEST FAILED ({fails} falhas)")
     return fails
 
@@ -231,44 +283,97 @@ def selftest():
 # ---------------------------------------------------------------------------
 
 VECTORS_HEADER = "// Gerado por scripts/aes_ref.py --vectors (make vectors). Nao editar a mao.\n"
+N_RANDOM_KEYS = 20      # chaves aleatorias extras para o teste da expansao de chave
+N_RANDOM_BLOCKS = 200   # trios (chave, texto claro, texto cifrado) aleatorios
+RANDOM_SEED = 2026      # semente fixa: make vectors gera sempre os mesmos arquivos
+
+
+def _write(outdir, fname, lines):
+    with open(os.path.join(outdir, fname), "w") as f:
+        f.write(VECTORS_HEADER)
+        f.write("\n".join(lines) + "\n")
+    print(f"[vetores] {os.path.join(outdir, fname)}")
 
 
 def write_vectors(outdir):
-    """Escreve as tabelas da S-box e os estados por rodada do FIPS-197 em outdir."""
+    """Gera todos os arquivos lidos pelos testbenches em outdir."""
     os.makedirs(outdir, exist_ok=True)
+    aes128 = FIPS_VECTORS[:2]                   # Apendices B e C.1
+    rng = random.Random(RANDOM_SEED)
+    rand128 = lambda: rng.getrandbits(128).to_bytes(16, "big")
 
-    tables = (("sbox.hex", "S-box (FIPS-197, Figura 7)", SBOX),
-              ("inv_sbox.hex", "S-box inversa (FIPS-197, Figura 14)", INV_SBOX))
-    for fname, title, table in tables:
-        with open(os.path.join(outdir, fname), "w") as f:
-            f.write(VECTORS_HEADER)
-            f.write(f"// {title}: a linha da entrada x contem o valor da tabela para x.\n")
-            for x, y in enumerate(table):
-                f.write(f"{y:02x}  // {x:02x}\n")
+    # S-box e S-box inversa
+    for fname, title, table in (("sbox.hex", "S-box (FIPS-197, Figura 7)", SBOX),
+                                ("inv_sbox.hex", "S-box inversa (FIPS-197, Figura 14)", INV_SBOX)):
+        _write(outdir, fname, [f"// {title}: a linha da entrada x contem o valor da tabela para x."] +
+               [f"{y:02x}  // {x:02x}" for x, y in enumerate(table)])
 
-    # Exemplos de cifragem AES-128 (Apendices B e C.1): rodadas 1 a 10
-    with open(os.path.join(outdir, "fips197_rounds.hex"), "w") as f:
-        f.write(VECTORS_HEADER)
-        f.write("// Estados do exemplo de cifragem do FIPS-197, rodadas 1 a 10 (AES-128).\n")
-        f.write("// Por linha: start of round | after SubBytes | after ShiftRows\n")
-        for name, k, p, _ in FIPS_VECTORS[:2]:
-            t = []
-            encrypt(bytes.fromhex(p), bytes.fromhex(k), t)
-            state = {(rnd, step): s for rnd, step, s in t}
-            f.write(f"// {name}: key {k}, pt {p}\n")
-            for rnd in range(1, 11):
-                cols = " ".join(hx(state[(rnd, step)]) for step in ("start", "s_box", "s_row"))
-                f.write(f"{cols}  // r{rnd:02d}\n")
+    # Cifra: rodadas 1 a 10 dos Apendices B e C.1
+    lines = ["// Cifra (FIPS-197 5.1), rodadas 1 a 10 dos Apendices B e C.1.",
+             "// Por linha: start | s_box | s_row | m_col | k_sch | fim da rodada (apos AddRoundKey).",
+             "// Na rodada 10 nao ha MixColumns: a coluna m_col repete s_row."]
+    for name, k, p, _ in aes128:
+        t = []
+        encrypt(bytes.fromhex(p), bytes.fromhex(k), t)
+        st = {(r, s): v for r, s, v in t}
+        lines.append(f"// {name}: key {k}, pt {p}")
+        for r in range(1, 11):
+            m_col = st[(r, "m_col")] if r < 10 else st[(r, "s_row")]
+            end = st[(r + 1, "start")] if r < 10 else st[(10, "output")]
+            cols = [st[(r, "start")], st[(r, "s_box")], st[(r, "s_row")], m_col, st[(r, "k_sch")], end]
+            lines.append(" ".join(hx(c) for c in cols) + f"  // r{r:02d}")
+    _write(outdir, "fips197_cipher_rounds.hex", lines)
 
-    for fname in ("sbox.hex", "inv_sbox.hex", "fips197_rounds.hex"):
-        print(f"[vetores] {os.path.join(outdir, fname)}")
+    # Cifra inversa: rodadas 1 a 10, decifrando os textos cifrados de C.1 e B
+    lines = ["// Cifra inversa (FIPS-197 5.3), rodadas 1 a 10, na numeracao do Apendice C.1.",
+             "// Por linha: istart | is_row | is_box | ik_sch | ik_add | fim da rodada (apos InvMixColumns).",
+             "// Na rodada 10 nao ha InvMixColumns: a ultima coluna repete ik_add."]
+    for name, k, _, c in (aes128[1], aes128[0]):
+        t = []
+        decrypt(bytes.fromhex(c), bytes.fromhex(k), t)
+        st = {(r, s): v for r, s, v in t}
+        lines.append(f"// {name}: key {k}, ct {c}")
+        for r in range(1, 11):
+            end = st[(r + 1, "istart")] if r < 10 else st[(10, "ik_add")]
+            cols = [st[(r, s)] for s in ("istart", "is_row", "is_box", "ik_sch", "ik_add")] + [end]
+            lines.append(" ".join(hx(x) for x in cols) + f"  // r{r:02d}")
+    _write(outdir, "fips197_invcipher_rounds.hex", lines)
+
+    # MixColumns e InvMixColumns nos 128 vetores de base (um unico bit em 1)
+    lines = ["// MixColumns e InvMixColumns nos 128 estados com um unico bit em 1.",
+             "// Por linha: x | MixColumns(x) | InvMixColumns(x). Linha i: bit i do estado em 1."]
+    for i in range(128):
+        x = list((1 << i).to_bytes(16, "big"))
+        lines.append(f"{hx(x)} {hx(mix_columns(x))} {hx(inv_mix_columns(x))}  // bit {i}")
+    _write(outdir, "mixcolumns_basis.hex", lines)
+
+    # Expansao de chave: as 11 chaves de rodada de varias chaves
+    keys = [bytes.fromhex(k) for _, k, _, _ in aes128] + [rand128() for _ in range(N_RANDOM_KEYS)]
+    lines = ["// Expansao de chave AES-128 (FIPS-197 5.2): chaves dos Apendices A.1/B e C.1",
+             f"// e mais {N_RANDOM_KEYS} chaves aleatorias. Por linha: rk0 (a propria chave) ... rk10."]
+    for key in keys:
+        w, _ = key_expansion(key)
+        lines.append(" ".join(hx(round_key(w, r)) for r in range(11)))
+    _write(outdir, "aes128_key_exp.hex", lines)
+
+    # Blocos completos: Apendices B e C.1 e mais N_RANDOM_BLOCKS trios aleatorios
+    lines = ["// AES-128 completo: Apendices B e C.1 do FIPS-197 e mais "
+             f"{N_RANDOM_BLOCKS} trios aleatorios.",
+             "// Por linha: key | plaintext | ciphertext."]
+    trios = [(bytes.fromhex(k), bytes.fromhex(p)) for _, k, p, _ in aes128]
+    trios += [(rand128(), rand128()) for _ in range(N_RANDOM_BLOCKS)]
+    for key, pt in trios:
+        lines.append(f"{hx(key)} {hx(pt)} {hx(encrypt(pt, key))}")
+    _write(outdir, "aes128_vectors.hex", lines)
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--key", default=FIPS_VECTORS[0][1], help="chave em hex (128/192/256 bits)")
     ap.add_argument("--pt", default=FIPS_VECTORS[0][2], help="texto claro em hex (128 bits)")
+    ap.add_argument("--ct", default=FIPS_VECTORS[0][3], help="texto cifrado em hex (com --decrypt)")
     ap.add_argument("--trace", action="store_true", help="imprime o estado rodada a rodada")
+    ap.add_argument("--decrypt", action="store_true", help="com --trace: rastreia a cifra inversa de --ct")
     ap.add_argument("--keyexp", action="store_true", help="imprime as palavras w[i] da expansao de chave")
     ap.add_argument("--sbox", action="store_true", help="imprime a S-box 16x16")
     ap.add_argument("--vectors", metavar="DIR", help="gera os vetores dos testbenches em DIR")
@@ -287,9 +392,12 @@ def main():
             print(f"w[{i:2d}] = {hx(word)}")
     elif a.trace:
         t = []
-        encrypt(pt, key, t)
+        if a.decrypt:
+            decrypt(bytes.fromhex(a.ct), key, t)
+        else:
+            encrypt(pt, key, t)
         for rnd, step, s in t:
-            print(f"round[{rnd:2d}].{step:<6} {hx(s)}")
+            print(f"round[{rnd:2d}].{step:<7} {hx(s)}")
     else:
         sys.exit(1 if selftest() else 0)
 
