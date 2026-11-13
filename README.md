@@ -12,6 +12,8 @@ A especificação funcional é o **Block Guide MiniSoC AES v1.0.0**, o mesmo da 
 | **Microarquitetura** | [`docs/architecture/microarquitetura_v1.0.md`](docs/architecture/microarquitetura_v1.0.md) |
 | **Backlog** | [`docs/backlog.md`](docs/backlog.md) |
 | **Relatórios semanais** | [`docs/reports/`](docs/reports/) |
+| **Enunciado original** | [`docs/enunciado.md`](docs/enunciado.md) — versão de 08/10 (15 semanas); o plano foi revisado em 27/10 para 13 semanas |
+| **Estudo da semana 1** | [`docs/semana-01.md`](docs/semana-01.md) — AES e SPI em resumo, com figuras em [`docs/img/`](docs/img/) |
 
 ---
 
@@ -66,7 +68,10 @@ A organização de `rtl/` segue a seção 10 do Block Guide. As pastas marcadas 
 │   ├── spec/             # Block Guide MiniSoC AES v1.0.0 (fornecido)
 │   ├── architecture/     # microarquitetura (sem. 3) e arquitetura de energia (sem. 11)
 │   ├── reports/          # relatórios semanais (semana_XX.md) e de estudo
-│   └── backlog.md        # backlog do projeto
+│   ├── backlog.md        # backlog do projeto
+│   ├── enunciado.md      # enunciado original (08/10)
+│   ├── semana-01.md      # estudo de AES e SPI da semana 1
+│   └── img/              # figuras do estudo da semana 1
 ├── rtl/
 │   ├── rtl.f             # lista única das fontes RTL, em ordem de compilação
 │   ├── minisoc_aes/      # minisoc_aes_top, _dp, _key_exp e submódulos
@@ -174,6 +179,8 @@ Para cada arquivo: para que serve e como se relaciona com o resto do projeto. To
 | [`docs/reports/semana_XX.md`](docs/reports/semana_XX.md) | Relatório de cada entrega: o que foi feito, resultados, problemas e próximos passos. | Exigido em toda semana, junto com a tag. O índice está em `docs/reports/README.md`. |
 | [`docs/reports/estudo_aes_spi.md`](docs/reports/estudo_aes_spi.md) | Estudo de AES e SPI feito na semana 1. | Base teórica das semanas 2 a 5. |
 | [`docs/backlog.md`](docs/backlog.md) | Tarefas por semana, riscos e pendências. | Atualizado no início de cada semana; os identificadores Bxx-n aparecem nos commits. |
+| [`docs/enunciado.md`](docs/enunciado.md) | Enunciado original do projeto (08/10, 15 semanas). | Ponto de partida; o cronograma vigente é o revisado, de 13 semanas. |
+| [`docs/semana-01.md`](docs/semana-01.md) | Estudo de AES e SPI em resumo, com as figuras de `docs/img/`. | Material de estudo da semana 1. |
 
 **Fases seguintes**
 
