@@ -16,7 +16,8 @@ O backlog é atualizado no início de cada semana. Cada item tem um identificado
 | R-2 | Acesso SSH ao servidor `microeletronica3` recusado (`Permission denied (publickey)`) | O fluxo Synopsys não roda. As semanas 2 a 7 seguem com Verilator e Icarus, mas a síntese (sem. 8), o Formality (sem. 9) e o UPF (sem. 11 a 13) dependem do servidor | Regularizar a chave com o suporte **antes de 11/12** e rodar `make` lá | aberto |
 | R-3 | Interfaces de topo e dos modelos do PLL e da memória precisam ser idênticas às do Block Guide | Retrabalho no RTL e no ambiente do verificador se divergirem | Nomes de módulos, arquivos e sinais seguem o Block Guide; a confirmação final é a primeira execução do ambiente DV sobre o RTL v1.0 (sem. 7) | aberto |
 | R-4 | Verificador parceiro ainda não definido | Pontos de contato das semanas 3, 7, 10 e 12 | Confirmar a dupla com o instrutor | aberto |
-| R-5 | Ambiguidades do Block Guide (lista em [`reports/semana_02.md`](reports/semana_02.md#dúvidas-sobre-o-block-guide-seções-1-a-3-e-8)) | Microarquitetura (sem. 3) e AES engine (sem. 6) | Levar ao ponto de acompanhamento com o instrutor | aberto |
+| R-5 | Ambiguidades do Block Guide: 17 pontos em aberto, conferidos com o texto da v1.0.0 (lista em [`reports/semana_02.md`](reports/semana_02.md#dúvidas-sobre-o-block-guide-seções-1-a-3-e-8)) | Microarquitetura (sem. 3), SPI (sem. 5), AES engine (sem. 6) e modos da sem. 10 (CFB, PCBC) | Levar ao ponto de acompanhamento com o instrutor | aberto |
+| R-6 | O Block Guide fixa `clk` em 2 GHz e permite `sys_clk` de 2 GHz (divisor /1) | Uma rodada AES por ciclo e o banco de registradores dificilmente fecham timing nessas frequências (sem. 3 e 8) | Confirmar com o instrutor as frequências-alvo da síntese antes de fechar a microarquitetura | aberto |
 
 ---
 
@@ -43,7 +44,7 @@ O backlog é atualizado no início de cada semana. Cada item tem um identificado
 | B02-3 | `minisoc_aes_shift_rows` | Só fiação; confere com o FIPS-197 Ap. B | feito |
 | B02-4 | Testbench autoverificável | S-box nas 256 entradas; Ap. B nas rodadas 1 e 10 (e todas as rodadas de B e C.1), executado por `make` | feito |
 | B02-5 | Opcional: InvSubBytes e InvShiftRows | `InvSubBytes(SubBytes(x)) = x` e `InvShiftRows(ShiftRows(x)) = x` | feito |
-| B02-6 | Leitura das seções 1 a 3 e 8 do Block Guide | Lista de dúvidas em `reports/semana_02.md`, conferida com o PDF | em andamento |
+| B02-6 | Leitura das seções 1 a 3 e 8 do Block Guide | Lista de dúvidas em `reports/semana_02.md`, conferida com o texto da v1.0.0 | feito |
 | B02-7 | Repositório na organização da seção 10 (`rtl/minisoc_*`) | Prefixo `minisoc_`; `models/` removida | feito |
 | B02-8 | Relatório da semana e tag `w02-subbytes-shiftrows` | `docs/reports/semana_02.md` | feito |
 

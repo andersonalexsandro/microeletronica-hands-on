@@ -101,25 +101,47 @@ O defeito em `S(53)` mostra por que a varredura exaustiva é necessária: os est
 
 ## Dúvidas sobre o Block Guide (seções 1 a 3 e 8)
 
-Pontos a confirmar com o instrutor e com o verificador parceiro antes de fechar a microarquitetura da semana 3.
+Leitura das seções 1 a 3 e 8 do Block Guide v1.0.0, consultando as seções 4 a 7 quando a dúvida dependia delas. A convenção do estado adotada no RTL confere com o documento: na seção 7.1, o bloco `128'h00112233445566778899AABBCCDDEEFF` na base 0 fica como `mem[0] = 0x00112233` … `mem[3] = 0xCCDDEEFF`, e na seção 6 `KEY0 = cfg_key[127:96]` e `KEY3 = cfg_key[31:0]`. Ou seja, o byte 0 do bloco e da chave fica em `[127:120]`, como no `minisoc_aes_sub_bytes` e no `minisoc_aes_shift_rows`.
 
-**Visão geral, arquitetura e interfaces de topo (seções 1 a 3)**
+**O que o Block Guide já define**
 
-1. **Ordem dos bytes da chave e do IV.** A Word 0 de um bloco é `[127:96]` e o byte 0 fica em `[127:120]`. A mesma regra vale para KEY0–KEY3 e IV0–IV3, ou seja, KEY0 traz os bytes 0 a 3 da chave, com o byte 0 em `KEY0[31:24]`? Uma inversão aqui faz todos os vetores do FIPS-197 falharem no topo, mesmo com o datapath correto.
-2. **Domínios de clock.** `clk` (always-on), `sys_clk` (PLL), `spi_sclk` e `mem_clk` são todos assíncronos entre si? Os campos de configuração (KEY, IV, COUNTER, MODE, NUM_BLOCKS) cruzam de `clk` para `sys_clk` como dados estáveis, capturados no START, sem sincronizador bit a bit? Isso define a análise de CDC da semana 7 e os grupos assíncronos do SDC.
-3. **Reset de topo.** Qual a polaridade do RESET e ele é assíncrono? Quantos ciclos o domínio do sistema fica em reset depois do PLL_LOCKED (os "ciclos suficientes" da seção 4.2), e em qual clock são contados?
-4. **Troca de ownership da memória.** Quando MEM_SEL_AES muda, o clock da memória passa de `mem_clk` para `sys_clk`. A troca pode acontecer com os dois clocks ativos, o que exigiria um mux de clock sem *glitch*, ou o modelo de programação garante que ela só ocorre com a memória ociosa?
-5. **MISO fora de transação.** Com o *chip select* inativo, o MISO fica em alta impedância, em 0 ou mantém o último bit?
+| Ponto | O que o Block Guide diz | Seção |
+| --- | --- | --- |
+| Ordem de KEY e IV | KEY0 = `cfg_key[127:96]` … KEY3 = `cfg_key[31:0]`; o mesmo para IV0–IV3 | 6 |
+| Palavras de um bloco | Word 0 = `[127:96]` no endereço `base + 0` … Word 3 = `[31:0]` em `base + 3` | 7.1 |
+| Reset de topo | `rst_n`, ativo em nível baixo; a memória não é apagada pelo reset | 3 |
+| Clocks | `clk` de 2 GHz (referência do PLL e domínio always-on do SPI); `sys_clk` = `clk` /1, /2, /4 ou /8, liberado só após o lock; `spi_sclk` ≤ 25 MHz, independente; `mem_clk` ≤ 200 MHz | 3, 4.1, 4.3 |
+| Troca de ownership da memória | Só com o AES ocioso e sem acesso externo em andamento | 7.2 |
+| Bloco de contador do CTR | AES encrypt sobre IV ⊕ contador de 64 bits estendido com zeros; o contador incrementa a cada bloco | 8.2 |
+| Modos que usam a cifra inversa | Só ECB, CBC e PCBC; CFB, OFB e CTR usam o encrypt | 6.1, 8.2 |
+| DONE e BLOCKS_DONE | DONE é *sticky* até um novo START válido; BLOCKS_DONE conta os blocos da operação corrente ou da anterior | 6.2, 8.4 |
+| Campos de controle e status | AES_CONTROL: START [0], DECRYPT [1], MODE [4:2]. AES_STATUS: BUSY [0], DONE [1], ERROR [2], BLOCKS_DONE [11:3] | 6.1, 6.2 |
 
-**AES engine (seção 8)**
+**Dúvidas que continuam abertas: visão geral, arquitetura e interfaces (seções 1 a 3)**
 
-6. **Bloco de contador no CTR.** COUNTER_HI/COUNTER_LO somam 64 bits. Como se forma o bloco de 128 bits cifrado: `{IV[127:64], COUNTER}`, `IV ⊕ COUNTER` ou outro arranjo? O incremento é de 64 bits, com volta a zero em 2⁶⁴, ou de 128 bits? O primeiro bloco usa COUNTER ou COUNTER + 1?
-7. **DECRYPT nos modos CTR, CFB e OFB.** Nesses modos a decriptação usa a cifra direta. Confirmar que o DECRYPT só muda a realimentação (no CFB, o texto cifrado de entrada) e que a cifra inversa nunca é usada neles. O CFB é o CFB-128, com segmento do tamanho do bloco?
-8. **PCBC.** A definição adotada é `C_i = E_K(P_i ⊕ P_{i−1} ⊕ C_{i−1})`, com o IV no papel de `P_0 ⊕ C_0`?
-9. **Endereço dos blocos.** O processamento começa sempre no endereço 0, com o bloco `i` nas palavras `4i` a `4i+3` e a Word 0 (`[127:96]`) no endereço mais baixo? Com NUM_BLOCKS = 256, a memória inteira (1024 palavras) é processada?
-10. **START fora de hora.** Um START com BUSY = 1 é ignorado, gera ERROR ou fica pendente? E um START com MEM_SEL_AES ainda apontando para a interface externa?
-11. **DONE, ERROR e BLOCKS_DONE.** Numa configuração inválida, DONE também sobe (fim sem processamento) ou só ERROR? ERROR é *sticky* como o DONE e é limpo pelo próximo START aceito? BLOCKS_DONE é zerado no START e atualizado a cada bloco escrito?
-12. **IV e COUNTER depois da operação.** Os registradores do banco mantêm o valor programado, e o engine trabalha com as cópias capturadas no START? Ou eles são atualizados com o último valor de encadeamento, para continuar uma mensagem numa segunda operação?
+1. **`clk` e `sys_clk` são relacionados?** O `sys_clk` sai da divisão do `clk`, o que faria dele um clock gerado, com fase conhecida. O plano, porém, pede análise de CDC entre `clk` e `sys_clk` e grupos assíncronos no SDC. O par deve ser tratado como assíncrono (sincronizadores no comando e no status) ou como síncrono (`create_generated_clock`)?
+2. **Frequências para a síntese.** O `clk` de 2 GHz alimenta o banco de registradores do SPI, e o `sys_clk` chega a 2 GHz com o divisor /1. Esses valores valem como alvo da síntese da semana 8, ou o instrutor define outros? A resposta pesa na microarquitetura: uma rodada AES por ciclo dificilmente fecha timing a 2 GHz.
+3. **Detalhes do reset.** O `rst_n` é assíncrono em relação ao `clk`? Quantos ciclos de `sys_clk` são os "ciclos suficientes" da seção 4.2?
+4. **Mux de clock da memória.** A seção 7.2 põe a regra no software: trocar MEM_SEL_AES só com tudo ocioso. Mesmo assim, o clock da memória passa de `mem_clk` para `sys_clk`, dois clocks que podem estar rodando. Basta um mux simples, ou é preciso um mux sem *glitch*? E o que o hardware deve fazer se a regra for violada?
+5. **MISO com `spi_cs_n` inativo.** Alta impedância, 0 ou o último bit? A seção 3 lista `spi_miso` como saída de 1 bit, sem sinal de enable.
+6. **Lista de arquivos.** A seção 10 mostra só três arquivos em `minisoc_aes/`. Os submódulos extras (`minisoc_aes_sbox`, `_sub_bytes`, `_shift_rows` e as inversas) são aceitos, e o ambiente da trilha DV compila a partir de uma lista de arquivos fornecida pelo aluno (aqui, `rtl/rtl.f`)?
+
+**Dúvidas que continuam abertas: AES engine (seção 8)**
+
+7. **CFB e o bit DECRYPT.** A seção 6.1 diz que DECRYPT seleciona a decriptação "nos modos que utilizam o primitive inverso". O CFB usa só o encrypt, mas decifrar nele não é igual a cifrar: a realimentação usa o texto cifrado, que na decriptação é a entrada do bloco. O DECRYPT também vale para o CFB? O segmento é de 128 bits (CFB-128)?
+8. **CTR: valor inicial e volta.** O primeiro bloco usa `IV ⊕ COUNTER` ou `IV ⊕ (COUNTER + 1)`? Depois de `2⁶⁴ − 1`, o contador volta a 0 sem afetar os 64 bits altos do IV?
+9. **PCBC e o IV.** A definição adotada é `C_i = E_K(P_i ⊕ P_{i−1} ⊕ C_{i−1})`, com o IV no papel de `P_0 ⊕ C_0`?
+10. **Endereço base.** A seção 7.1 fala em `base + 0..3`, mas o mapa de registradores não tem registrador de base. O bloco `i` fica sempre nas palavras `4i` a `4i+3`, a partir do endereço 0?
+11. **START fora de hora.** Um START com BUSY = 1, ou com MEM_SEL_AES = 0, é ignorado, gera ERROR ou é aceito? Isso define o que é um "START válido" (seção 6.2).
+12. **ERROR.** Numa configuração inválida, DONE também sobe? ERROR é limpo pelo próximo START válido, como o DONE? BUSY chega a subir?
+13. **IV e COUNTER depois da operação.** Os registradores do banco mantêm o valor programado, já que o engine captura cópias no START (seção 8.3)? Uma segunda operação continua o encadeamento ou recomeça do IV programado?
+
+**Pontos de outras seções, para as semanas 5 a 7**
+
+14. **Fase de retorno da leitura SPI (5.1, 5.2 e 6).** Na segunda transação, em quais bits do frame o valor lido sai no MISO: no campo DATA (bits 31:0) ou desde o primeiro bit? A segunda transação precisa ser um READ para o endereço 0x3F (NOP)?
+15. **Leituras sem efeito definido (6 e 6.1).** START volta como 0 quando AES_CONTROL é lido? O que retornam os endereços 0x10 a 0x3E? Qual o valor de VERSION?
+16. **Latência da memória (7.3).** "De acordo com o modelo síncrono da memória": o dado sai um ciclo depois do endereço? E numa leitura no mesmo ciclo de uma escrita?
+17. **Reconfiguração do PLL (4.1).** Se PLL_DIV_SEL mudar ou PLL_ENABLE cair com o PLL travado, ou com o AES ocupado, o `locked` cai e o domínio do sistema volta ao reset?
 
 ## Próximos passos (semana 3, entrega 06/11)
 
