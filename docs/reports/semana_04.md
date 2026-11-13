@@ -41,6 +41,8 @@
 
 4. **Modelo de referência.** O `make vectors` gera também `aes128_key_exp.hex` e `aes128_vectors.hex`, com semente fixa (`make vectors` seguido de `git diff` não mostra diferença).
 
+5. **Código comentado em detalhe.** Todo o RTL, os testbenches, o Makefile e o modelo em Python receberam comentários que explicam o que cada trecho faz, por que foi escrito assim e no que vira em hardware. Cada arquivo tem um cabeçalho (o que faz, onde fica no projeto, no que vira em hardware) e seções com título. A mudança foi só de comentários: o código sem comentários é idêntico ao da versão anterior (conferido por script), e o `make` continua passando.
+
 ## Resultados
 
 Ambiente local: Verilator 5.020, Icarus Verilog 12.0, GNU Make 4.3 e Python 3.12 (`TOOLS=oss`).

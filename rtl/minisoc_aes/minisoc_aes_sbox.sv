@@ -1,25 +1,52 @@
 // ============================================================================
 // minisoc_aes_sbox - S-box do AES (FIPS-197, secao 5.1.1, Figura 7)
 // ----------------------------------------------------------------------------
-// Substitui 1 byte por outro. Puramente combinacional: sem clock e sem reset,
-// a saida depende so do valor atual da entrada.
+// O QUE FAZ
+//   Troca 1 byte por outro, segundo uma tabela fixa de 256 valores.
+//   Exemplos do FIPS-197: S(00) = 63, S(53) = ed, S(ff) = 16.
 //
-// Implementada como tabela: um case com as 256 entradas da Figura 7. Na
-// sintese, a tabela vira uma funcao logica de 8 entradas e 8 saidas, que a
-// ferramenta minimiza; nao ha memoria (ROM) envolvida.
+// DE ONDE VEM A TABELA (a matematica, so para entender)
+//   S(x) = afim(x^-1), em duas etapas:
+//     1. x^-1: o inverso de x em GF(2^8), o corpo finito de 256 elementos do
+//        AES (por convencao, o inverso de 00 e 00). Ex.: 53^-1 = ca.
+//     2. afim: b ^ rotl(b,1) ^ rotl(b,2) ^ rotl(b,3) ^ rotl(b,4) ^ 63,
+//        onde rotl gira os bits a esquerda. Ex.: afim(ca) = ed.
+//   E a UNICA etapa nao linear do AES: sem ela, a cifra inteira seria uma
+//   sequencia de XORs e permutacoes, que se resolve com algebra.
 //
-// Os valores sao conferidos pelo tb_minisoc_aes_sbox contra a tabela de
-// referencia tb/vectors/sbox.hex, que o modelo scripts/aes_ref.py calcula
-// pela definicao: inverso multiplicativo em GF(2^8) + transformacao afim.
+// COMO FOI IMPLEMENTADA
+//   Como tabela: um case com as 256 entradas da Figura 7. A tabela foi gerada
+//   pelo modelo de referencia (scripts/aes_ref.py), que a calcula pela
+//   definicao acima, e e conferida pelo tb_minisoc_aes_sbox contra o arquivo
+//   tb/vectors/sbox.hex e contra os valores citados no FIPS-197.
+//   Alternativa nao usada: calcular o inverso em hardware (campo composto),
+//   com menos area, mas bem mais dificil de ler e de depurar.
 //
-// Uso: 16 instancias no minisoc_aes_sub_bytes e, na semana 4, 4 instancias
-// no SubWord da expansao de chave (minisoc_aes_key_exp).
+// ONDE FICA NO PROJETO
+//   Semana 2. Instancias: 16 no minisoc_aes_sub_bytes e 4 no SubWord do
+//   minisoc_aes_key_exp (semana 4). E puramente combinacional.
 // ============================================================================
 module minisoc_aes_sbox (
     input  logic [7:0] data_i,   // byte de entrada
     output logic [7:0] data_o    // S(data_i)
 );
 
+    // ---------------- tabela de 256 entradas ----------------
+    // always_comb: bloco de logica COMBINACIONAL. O simulador o reavalia toda
+    // vez que data_i muda; nao ha clock nem memoria.
+    // case (data_i): escolhe a linha pelo valor do byte de entrada. Cada linha
+    // "8'hXY: data_o = 8'hZW;" diz: se a entrada vale XY, a saida vale ZW.
+    // (8'h53 = literal de 8 bits escrito em hexadecimal.)
+    //
+    // POR QUE NAO HA "default": as 256 combinacoes possiveis de 8 bits estao
+    // listadas, entao o case e COMPLETO: todo valor de entrada cai numa linha
+    // e data_o sempre recebe valor. Assim a sintese nao infere LATCH (um
+    // elemento de memoria indesejado, que apareceria se algum valor de
+    // entrada deixasse data_o sem atribuicao).
+    //
+    // COMO LER A TABELA: 4 linhas do case por linha de texto, em ordem.
+    // Na sintese, a tabela inteira vira uma funcao logica de 8 entradas e 8
+    // saidas, minimizada pela ferramenta: nao ha ROM nem memoria no chip.
     // As 256 combinacoes de data_i estao listadas: o case e completo, entao
     // data_o recebe valor em todos os caminhos e a sintese nao infere latch.
     always_comb begin

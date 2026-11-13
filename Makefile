@@ -12,18 +12,36 @@
 #
 # Tudo que e gerado pelas ferramentas vai para build/ (ignorado pelo Git),
 # exceto os relatorios de lint, versionados em lint/reports/.
+#
+# COMO LER UM MAKEFILE
+#   - "VAR := valor" define uma variavel (":=" calcula na hora; "?=" so define
+#     se ninguem passou outro valor na linha de comando, ex.: make TB=...).
+#   - "alvo: dependencias" seguido de linhas que comecam com TAB e uma regra:
+#     as linhas com TAB sao comandos do shell executados para fazer o alvo.
+#   - "@" no inicio de um comando esconde o comando (so mostra a saida).
+#   - "$$" vira "$" para o shell (o "$" sozinho e do proprio make).
 # ============================================================================
 
+# ---------------- shell e caminhos ----------------
+# bash com "-e" (para no primeiro erro) e "-o pipefail" (um erro no meio de
+# um "a | b" tambem conta como erro). ROOT e a pasta deste Makefile; BUILD e
+# onde as ferramentas escrevem.
 SHELL       := /bin/bash
 .SHELLFLAGS := -eo pipefail -c
 
 ROOT  := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 BUILD := $(ROOT)/build
 
+# ---------------- escolha das ferramentas ----------------
+# Se o script de ambiente da Synopsys existir, usa as ferramentas do servidor;
+# senao, as de codigo aberto (OSS). SNPS_ENV carrega licenca e PATH antes de
+# cada comando Synopsys.
 SNPS_SETUP ?= /Tools/synopsys/snps.sh
 TOOLS      ?= $(if $(wildcard $(SNPS_SETUP)),synopsys,oss)
 SNPS_ENV   := source $(SNPS_SETUP) >/dev/null 2>&1 || true;
 
+# ---------------- fontes, testes e vetores ----------------
+# RTL_SRCS: le rtl/rtl.f, tira os comentarios (sed) e poe o caminho completo.
 # Fontes RTL: lista unica em rtl/rtl.f (linhas com // sao comentario)
 RTL_SRCS := $(addprefix $(ROOT)/,$(shell sed -e 's://.*::' $(ROOT)/rtl/rtl.f))
 # Lint (Verilator): cada modulo de rtl/rtl.f e verificado como topo, pela
@@ -31,15 +49,21 @@ RTL_SRCS := $(addprefix $(ROOT)/,$(shell sed -e 's://.*::' $(ROOT)/rtl/rtl.f))
 # existir (semana 7), basta LINT_TOPS=minisoc_top.
 LINT_TOPS ?= $(basename $(notdir $(RTL_SRCS)))
 
+# TESTS: todos os arquivos tb/tb_*.sv, sem caminho e sem extensao, em ordem
+# alfabetica. TB: o testbench de "make sim" (o primeiro, se nao for passado).
 # Testes: todo tb/tb_*.sv e um testbench self-checking que imprime TEST PASSED/FAILED
 TESTS ?= $(sort $(basename $(notdir $(wildcard $(ROOT)/tb/tb_*.sv))))
 TB    ?= $(firstword $(TESTS))
 # Vetores de referencia lidos pelos testbenches ($readmemh), gerados por make vectors
 VEC_DIR := $(ROOT)/tb/vectors
 
+# Pasta de trabalho de cada simulacao e nome do relatorio de lint.
 SIM_DIR  = $(BUILD)/$(TOOLS)/$(TB)
 LINT_LOG = $(ROOT)/lint/reports/lint_$(if $(filter synopsys,$(TOOLS)),vlogan,verilator).log
 
+# ---------------- alvos principais ----------------
+# .PHONY: estes alvos nao sao arquivos, sempre rodam.
+# "all" (o padrao de "make") depende de env, lint e test, nessa ordem.
 .PHONY: all help env lint test sim wave ref vectors clean
 .DEFAULT_GOAL := all
 
@@ -61,6 +85,12 @@ help:
 env:
 	@echo "== ferramentas: $(TOOLS) | testes: $(TESTS) =="
 
+# ---------------- lint ----------------
+# Servidor: vlogan +lint=all em todas as fontes.
+# Local: Verilator --lint-only -Wall, um modulo de cada vez como topo. O
+# relatorio comeca com a versao da ferramenta e termina com o resultado.
+# Como o Verilator sai com erro ao achar qualquer aviso (e o shell tem -e e
+# pipefail), um unico aviso para o make.
 # ---------------------------------------------------------------- lint ----
 lint:
 	@mkdir -p $(BUILD)/lint $(dir $(LINT_LOG))
@@ -79,6 +109,14 @@ else
 endif
 	@echo "[LINT OK] relatorio em $(patsubst $(ROOT)/%,%,$(LINT_LOG))"
 
+# ---------------- simulacao ----------------
+# test: chama "make sim" para cada testbench; para no primeiro que falhar.
+# sim: 1) apaga e recria a pasta da simulacao;
+#      2) compila RTL + testbench (VCS no servidor; Icarus localmente, com a
+#         mesma unidade de tempo 1 ns/1 ps do VCS);
+#      3) roda, passando +VEC_DIR (o diretorio dos vetores) ao testbench;
+#      4) decide pelo log: "TEST PASSED" -> [PASS] com a linha de resumo;
+#         senao, mostra o log inteiro e falha.
 # ---------------------------------------------------------- simulacao ----
 test:
 	@for t in $(TESTS); do $(MAKE) --no-print-directory sim TB=$$t || exit 1; done
@@ -105,6 +143,8 @@ endif
 	    cat $(SIM_DIR)/sim.log; echo "[FAIL] $(TB) - log em $(SIM_DIR)/sim.log"; exit 1; \
 	 fi
 
+# ---------------- formas de onda ----------------
+# Abre as ondas do ultimo "make sim TB=..." (Verdi no servidor, GTKWave aqui).
 wave:
 ifeq ($(TOOLS),synopsys)
 	cd $(SIM_DIR) && $(SNPS_ENV) verdi -nologo -ssf waves.fsdb &
@@ -112,6 +152,9 @@ else
 	gtkwave $(SIM_DIR)/waves.vcd &
 endif
 
+# ---------------- modelo de referencia ----------------
+# ref: auto-teste do modelo em Python (vetores e valores intermediarios dos
+# padroes). vectors: regenera os arquivos de tb/vectors/.
 # -------------------------------------------------- modelo de referencia ----
 ref:
 	python3 $(ROOT)/scripts/aes_ref.py
@@ -121,5 +164,6 @@ ref:
 vectors:
 	python3 -B $(ROOT)/scripts/aes_ref.py --vectors $(VEC_DIR)
 
+# ---------------- limpeza ----------------
 clean:
 	rm -rf $(BUILD)

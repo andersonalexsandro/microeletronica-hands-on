@@ -1,20 +1,41 @@
 // ============================================================================
 // minisoc_aes_inv_sbox - S-box inversa do AES (FIPS-197, secao 5.3.2, Figura 14)
 // ----------------------------------------------------------------------------
-// Desfaz a S-box: InvS(S(x)) = x para todo byte x. Mesma estrutura da
-// minisoc_aes_sbox (case de 256 entradas, puramente combinacional).
+// O QUE FAZ
+//   Desfaz a S-box: InvS(S(x)) = x para todo byte x.
+//   Exemplos: InvS(63) = 00, InvS(ed) = 53.
 //
-// Os valores sao conferidos pelo tb_minisoc_aes_sbox contra a tabela de
-// referencia tb/vectors/inv_sbox.hex e pela propriedade InvS(S(x)) = x.
+// COMO FOI IMPLEMENTADA
+//   Mesma estrutura da minisoc_aes_sbox: um case com as 256 entradas da
+//   Figura 14, puramente combinacional. A tabela vem do modelo de referencia
+//   e e conferida pelo tb_minisoc_aes_sbox contra tb/vectors/inv_sbox.hex e
+//   pela propriedade InvS(S(x)) = x nos 256 valores.
 //
-// Uso: 16 instancias no minisoc_aes_inv_sub_bytes (decriptacao nos modos
-// ECB, CBC e PCBC, a partir da semana 4).
+// ONDE FICA NO PROJETO
+//   Semanas 2 e 3. 16 instancias no minisoc_aes_inv_sub_bytes, usado na
+//   cifra inversa (decriptacao nos modos ECB, CBC e PCBC).
 // ============================================================================
 module minisoc_aes_inv_sbox (
     input  logic [7:0] data_i,   // byte de entrada
     output logic [7:0] data_o    // InvS(data_i)
 );
 
+    // ---------------- tabela de 256 entradas ----------------
+    // always_comb: bloco de logica COMBINACIONAL. O simulador o reavalia toda
+    // vez que data_i muda; nao ha clock nem memoria.
+    // case (data_i): escolhe a linha pelo valor do byte de entrada. Cada linha
+    // "8'hXY: data_o = 8'hZW;" diz: se a entrada vale XY, a saida vale ZW.
+    // (8'h53 = literal de 8 bits escrito em hexadecimal.)
+    //
+    // POR QUE NAO HA "default": as 256 combinacoes possiveis de 8 bits estao
+    // listadas, entao o case e COMPLETO: todo valor de entrada cai numa linha
+    // e data_o sempre recebe valor. Assim a sintese nao infere LATCH (um
+    // elemento de memoria indesejado, que apareceria se algum valor de
+    // entrada deixasse data_o sem atribuicao).
+    //
+    // COMO LER A TABELA: 4 linhas do case por linha de texto, em ordem.
+    // Na sintese, a tabela inteira vira uma funcao logica de 8 entradas e 8
+    // saidas, minimizada pela ferramenta: nao ha ROM nem memoria no chip.
     // As 256 combinacoes de data_i estao listadas: o case e completo, entao
     // data_o recebe valor em todos os caminhos e a sintese nao infere latch.
     always_comb begin

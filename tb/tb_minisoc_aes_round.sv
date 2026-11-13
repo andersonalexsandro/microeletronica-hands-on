@@ -1,14 +1,16 @@
 // ============================================================================
 // tb_minisoc_aes_round - testes unitarios das transformacoes de rodada
 // ----------------------------------------------------------------------------
-// Cada transformacao e um DUT com a sua propria entrada, tirada direto do
-// vetor de referencia. Assim uma falha aponta exatamente o bloco culpado.
+// TESTE UNITARIO
+//   Cada transformacao e um DUT com a sua propria entrada, tirada direto do
+//   vetor de referencia. Assim uma falha aponta exatamente o bloco culpado:
+//   se o MixColumns estiver errado, so as checagens de MixColumns falham.
 //
 //   Cifra (FIPS-197 5.1):          SubBytes, ShiftRows, MixColumns, AddRoundKey
 //   Cifra inversa (FIPS-197 5.3):  InvShiftRows, InvSubBytes, AddRoundKey,
 //                                  InvMixColumns
 //
-// Confere:
+// O QUE CONFERE
 //   1. valores copiados do FIPS-197: rodadas 1 e 10 do Apendice B (cifra) e
 //      rodada 1 do Apendice C.1 (cifra inversa), independentes do modelo;
 //   2. cifra: rodadas 1 a 10 dos Apendices B e C.1 (fips197_cipher_rounds.hex);
@@ -19,11 +21,13 @@
 //   6. propriedades em 1000 estados aleatorios: cada inversa desfaz a sua
 //      transformacao, e MixColumns e InvMixColumns sao lineares
 //      (f(x ^ y) = f(x) ^ f(y)).
+//   Total: 5425 checagens.
 //
-// Por que 5 e 6 juntos bastam: MixColumns e InvMixColumns sao lineares sobre
-// GF(2). Todo estado e o XOR de estados com um unico bit em 1, entao um bloco
-// linear que acerta os 128 vetores de base acerta todos os 2^128 estados. A
-// parte 6 confere, por amostragem, que o RTL e de fato linear.
+// POR QUE 5 E 6 JUNTOS BASTAM
+//   MixColumns e InvMixColumns sao lineares sobre GF(2). Todo estado e o XOR
+//   de estados com um unico bit em 1, entao um bloco linear que acerta os 128
+//   vetores de base acerta todos os 2^128 estados. A parte 6 confere, por
+//   amostragem, que o RTL e de fato linear.
 //
 // Os vetores vem do modelo scripts/aes_ref.py (make vectors); o diretorio
 // chega pelo plusarg +VEC_DIR=<dir>.
@@ -31,11 +35,14 @@
 // ============================================================================
 module tb_minisoc_aes_round;
 
+    // ---------------- parametros ----------------
     localparam int N_ROUNDS = 20;     // 10 rodadas x 2 exemplos, em cada sentido
     localparam int N_BASIS  = 128;    // estados com um unico bit em 1
     localparam int N_RANDOM = 1000;
 
     // ---------------- unidades sob teste ----------------
+    // Um par de sinais (entrada _i, saida _o) por transformacao. Todos os
+    // DUTs sao combinacionais: nao ha clock neste testbench.
     logic [127:0] sb_i,  sb_o;     // SubBytes
     logic [127:0] sr_i,  sr_o;     // ShiftRows
     logic [127:0] mc_i,  mc_o;     // MixColumns
@@ -53,6 +60,8 @@ module tb_minisoc_aes_round;
     minisoc_aes_inv_mix_columns u_imc (.state_i(imc_i), .state_o(imc_o));
 
     // ---------------- vetores de referencia ----------------
+    // Cada linha dos arquivos tem 6 valores de 128 bits por rodada; o
+    // $readmemh coloca um valor por posicao do array, em sequencia.
     logic [127:0] cv [0:6*N_ROUNDS-1];   // start s_box s_row m_col k_sch fim
     logic [127:0] iv [0:6*N_ROUNDS-1];   // istart is_row is_box ik_sch ik_add fim
     logic [127:0] bv [0:3*N_BASIS-1];    // x  MixColumns(x)  InvMixColumns(x)
@@ -61,6 +70,7 @@ module tb_minisoc_aes_round;
     int    checks = 0;
     int    errors = 0;
 
+    // ---------------- tarefa de comparacao ----------------
     // Compara com !== (e nao !=): assim um X ou Z na saida tambem conta como erro
     task automatic check(input string what, input logic [127:0] got, input logic [127:0] expected);
         checks++;
@@ -70,6 +80,14 @@ module tb_minisoc_aes_round;
         end
     endtask
 
+    // ---------------- uma rodada da cifra ----------------
+    // Cada DUT recebe a entrada ESPERADA da sua etapa (vinda do vetor), e nao a
+    // saida do DUT anterior: e isso que torna o teste unitario.
+    //   SubBytes(start) = s_box;  ShiftRows(s_box) = s_row;
+    //   MixColumns(s_row) = m_col (so ate a rodada 9);
+    //   AddRoundKey(m_col, k_sch) = fim da rodada.
+    // Na rodada 10 o vetor traz m_col = s_row (sem MixColumns), entao a
+    // checagem da AddRoundKey continua valendo.
     // Uma rodada da cifra: cada DUT recebe a entrada esperada da sua etapa
     task automatic cipher_round(input string tag,
                                 input logic [127:0] st, input logic [127:0] s_box,
@@ -90,6 +108,11 @@ module tb_minisoc_aes_round;
         $display("%s  %032h -> %032h  %s", tag, st, fim, verdict);
     endtask
 
+    // ---------------- uma rodada da cifra inversa ----------------
+    // Mesma ideia, na ordem do FIPS-197 5.3 e na nomenclatura do Apendice C.1:
+    //   InvShiftRows(istart) = is_row;  InvSubBytes(is_row) = is_box;
+    //   AddRoundKey(is_box, ik_sch) = ik_add;
+    //   InvMixColumns(ik_add) = inicio da proxima rodada (menos na ultima).
     // Uma rodada da cifra inversa, na ordem do FIPS-197 5.3
     task automatic inv_round(input string tag,
                              input logic [127:0] istart, input logic [127:0] is_row,
@@ -112,6 +135,7 @@ module tb_minisoc_aes_round;
 
     logic [127:0] x, y, fx, fy;   // estados das propriedades (parte 6)
 
+    // ---------------- parte 1: valores copiados do FIPS-197 ----------------
     initial begin
 `ifdef FSDB
         $fsdbDumpfile("waves.fsdb");
@@ -122,6 +146,8 @@ module tb_minisoc_aes_round;
 `endif
 
         // 1. valores copiados do FIPS-197
+        // Os numeros abaixo estao impressos nos Apendices B e C.1 do padrao;
+        // nao dependem do modelo em Python.
         $display("-- 1. valores do padrao: Ap. B rodadas 1 e 10 (cifra), Ap. C.1 rodada 1 (cifra inversa)");
         cipher_round("FIPS-197 B   r01",
                      128'h193de3bea0f4e22b9ac68d2ae9f84808,     // start
@@ -148,6 +174,7 @@ module tb_minisoc_aes_round;
                   128'h54d990a16ba09ab596bbf40ea111702f,        // istart da rodada 2
                   1'b0);
 
+        // ---------------- partes 2 e 3: todas as rodadas do modelo ----------------
         // 2 e 3. todas as rodadas, a partir do modelo de referencia
         if (!$value$plusargs("VEC_DIR=%s", vec_dir)) vec_dir = "tb/vectors";
         $readmemh({vec_dir, "/fips197_cipher_rounds.hex"}, cv);
@@ -158,6 +185,7 @@ module tb_minisoc_aes_round;
             $display("ERRO: arquivos de vetores incompletos ou nao encontrados em %s", vec_dir);
         end
 
+        // 6*i e o inicio da rodada i no array; (i % 10) == 9 marca a rodada 10.
         $display("-- 2. cifra: Ap. B e C.1, rodadas 1 a 10 (modelo de referencia)");
         for (int i = 0; i < N_ROUNDS; i++)
             cipher_round($sformatf("cifra %s r%02d", (i < 10) ? "B  " : "C.1", i % 10 + 1),
@@ -170,7 +198,10 @@ module tb_minisoc_aes_round;
                       iv[6*i], iv[6*i+1], iv[6*i+2], iv[6*i+3], iv[6*i+4], iv[6*i+5],
                       (i % 10) == 9);
 
+        // ---------------- parte 4: bytes numerados ----------------
         // 4. bytes numerados: o byte n vale n, entao a saida mostra de onde veio cada byte
+        // Ex.: ShiftRows(00 01 02 ... 0f) = 00 05 0a 0f ...: o byte de saida 1
+        // veio da posicao 5 da entrada.
         $display("-- 4. ShiftRows e InvShiftRows com os bytes numerados");
         sr_i  = 128'h000102030405060708090a0b0c0d0e0f;
         isr_i = 128'h000102030405060708090a0b0c0d0e0f;
@@ -180,7 +211,9 @@ module tb_minisoc_aes_round;
         $display("ShiftRows   (00..0f) = %032h", sr_o);
         $display("InvShiftRows(00..0f) = %032h", isr_o);
 
+        // ---------------- parte 5: vetores de base do MixColumns ----------------
         // 5. vetores de base de MixColumns e InvMixColumns
+        // Linha i do arquivo: estado com so o bit i em 1, MC dele e IMC dele.
         $display("-- 5. MixColumns e InvMixColumns nos %0d estados com um unico bit em 1", N_BASIS);
         for (int i = 0; i < N_BASIS; i++) begin
             mc_i  = bv[3*i];
@@ -191,7 +224,11 @@ module tb_minisoc_aes_round;
         end
         $display("%0d vetores de base conferidos", N_BASIS);
 
+        // ---------------- parte 6: propriedades em estados aleatorios ----------------
         // 6. propriedades em estados aleatorios
+        // $urandom devolve 32 bits aleatorios; 4 deles concatenados formam um
+        // estado de 128 bits. Aqui os DUTs sao usados em sequencia: primeiro
+        // a transformacao, depois a inversa sobre o resultado.
         $display("-- 6. inversas e linearidade em %0d estados aleatorios", N_RANDOM);
         for (int i = 0; i < N_RANDOM; i++) begin
             x = {$urandom, $urandom, $urandom, $urandom};
@@ -205,6 +242,7 @@ module tb_minisoc_aes_round;
             check("InvShiftRows(ShiftRows(x))",     isr_o, x);
             check("InvMixColumns(MixColumns(x))",   imc_o, x);
             // linearidade: f(x ^ y) = f(x) ^ f(y)
+            // Calcula f(x), depois f(y), soma (XOR) e compara com f(x ^ y).
             mc_i = x; imc_i = x;
             #1;
             fx = mc_o; fy = imc_o;               // fx = MC(x), fy = IMC(x)

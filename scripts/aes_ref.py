@@ -29,18 +29,24 @@ import os
 import random
 import sys
 
-# ---------------------------------------------------------------------------
-# Aritmetica em GF(2^8) com o polinomio m(x) = x^8 + x^4 + x^3 + x + 1 (0x11B)
-# ---------------------------------------------------------------------------
+# ---------------- aritmetica em GF(2^8) ----------------
+# GF(2^8) e o corpo finito de 256 elementos do AES: cada byte e um polinomio
+# com coeficientes 0 ou 1 (bit i = coeficiente de x^i). Somar e XOR (^);
+# multiplicar e multiplicar polinomios e reduzir pelo polinomio do AES,
+# m(x) = x^8 + x^4 + x^3 + x + 1 (0x11B), para o resultado caber em 8 bits.
+# Daqui saem a S-box (inverso + afim), o MixColumns e o Rcon.
 
 def xtime(b):
     """Multiplica por {02}: desloca 1 bit e reduz por 0x1B se houve estouro."""
+    # Ex.: xtime(0x57) = 0xae; xtime(0xae) = 0x47 (bit 7 era 1: reduz com 0x1B).
     b <<= 1
     return (b ^ 0x11B) & 0xFF if b & 0x100 else b
 
 
 def gmul(a, b):
     """Multiplicacao em GF(2^8) por somas de xtime (algoritmo 'shift-and-add')."""
+    # Soma (XOR) de a, 2a, 4a, ... para cada bit 1 de b, como numa
+    # multiplicacao no papel em binario, mas sem vai-um.
     p = 0
     while b:
         if b & 1:
@@ -52,6 +58,7 @@ def gmul(a, b):
 
 def ginv(b):
     """Inverso multiplicativo: b^254 (pois b^255 = 1). Por convencao inv(0) = 0."""
+    # Forca bruta: b^254, porque b^255 = 1 para todo b != 0 em GF(2^8).
     r = 1
     for _ in range(254):
         r = gmul(r, b)
@@ -72,9 +79,10 @@ INV_SBOX = [0] * 256
 for _x, _s in enumerate(SBOX):
     INV_SBOX[_s] = _x
 
-# ---------------------------------------------------------------------------
-# Transformacoes de rodada
-# ---------------------------------------------------------------------------
+# ---------------- transformacoes de rodada ----------------
+# O estado e uma lista de 16 inteiros (bytes) na ordem de entrada: o byte
+# in[i] fica na linha r = i % 4 e na coluna c = i // 4 (FIPS-197 3.4). E a
+# mesma ordem do RTL, onde o byte 0 fica nos bits [127:120].
 
 def sub_bytes(s):
     return [SBOX[b] for b in s]
@@ -85,6 +93,8 @@ def inv_sub_bytes(s):
 
 
 def shift_rows(s):
+    # Para cada posicao de saida (r, c), pega o byte da linha r, coluna
+    # (c + r) mod 4 da entrada; o indice do byte e r + 4*coluna.
     # linha r gira r posicoes para a esquerda: s'[r,c] = s[r, (c+r) mod 4]
     return [s[r + 4 * ((c + r) % 4)] for c in range(4) for r in range(4)]
 
@@ -94,6 +104,8 @@ def inv_shift_rows(s):
 
 
 def _mix(s, m):
+    # Multiplica cada coluna (4 bytes) pela matriz m em GF(2^8): cada byte de
+    # saida e a soma (XOR) dos 4 produtos gmul(coeficiente, byte).
     out = []
     for c in range(4):
         col = s[4 * c:4 * c + 4]
@@ -120,14 +132,17 @@ def inv_mix_columns(s):
 def add_round_key(s, rk):
     return [a ^ b for a, b in zip(s, rk)]
 
-# ---------------------------------------------------------------------------
-# Expansao de chave (FIPS-197 5.2)
-# ---------------------------------------------------------------------------
+# ---------------- expansao de chave ----------------
+# FIPS-197 5.2. Gera as palavras w[0..4*(Nr+1)-1] (44 palavras no AES-128);
+# a chave de rodada r e w[4r .. 4r+3].
 
 RCON = [0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36]
 
 
 def key_expansion(key):
+    # Nk = palavras da chave (4 no AES-128); Nr = rodadas (10 no AES-128).
+    # Cada w[i] = w[i-Nk] ^ temp; a cada Nk palavras, temp passa por RotWord,
+    # SubWord e Rcon.
     nk = len(key) // 4
     if nk not in (4, 6, 8):
         raise ValueError("chave deve ter 128, 192 ou 256 bits")
@@ -148,11 +163,15 @@ def key_expansion(key):
 def round_key(w, rnd):
     return [b for word in w[4 * rnd:4 * rnd + 4] for b in word]
 
-# ---------------------------------------------------------------------------
-# Cifra e decifra
-# ---------------------------------------------------------------------------
+# ---------------- cifra e cifra inversa ----------------
+# encrypt e decrypt seguem o pseudocodigo do FIPS-197 (secoes 5.1 e 5.3).
+# O parametro trace, se for uma lista, recebe o estado depois de cada passo,
+# na nomenclatura dos Apendices B e C.1 (start, s_box, s_row, m_col, k_sch;
+# istart, is_row, is_box, ik_sch, ik_add). E daqui que saem os vetores das
+# rodadas usados pelo tb_minisoc_aes_round.
 
 def encrypt(pt, key, trace=None):
+    # AddRoundKey inicial, depois Nr rodadas; a ultima sem MixColumns.
     w, nr = key_expansion(key)
     s = add_round_key(list(pt), round_key(w, 0))
     if trace is not None:
@@ -208,9 +227,10 @@ def decrypt(ct, key, trace=None):
         trace.append((nr, "ioutput", s))
     return s
 
-# ---------------------------------------------------------------------------
-# Vetores do padrao e CLI
-# ---------------------------------------------------------------------------
+# ---------------- vetores dos padroes e auto-teste ----------------
+# FIPS_VECTORS: os trios (chave, texto claro, texto cifrado) do FIPS-197.
+# KNOWN_VALUES: valores intermediarios impressos nos padroes. Todo valor
+# copiado de um padrao para um testbench passa antes por aqui (make ref).
 
 FIPS_VECTORS = [
     # (nome, chave, texto claro, texto cifrado)
@@ -257,6 +277,8 @@ def _trace_value(fn, data_hex, key_hex, where):
 
 
 def selftest():
+    # Confere S-box, os 4 vetores do FIPS-197 (cifra e decifra) e os valores
+    # intermediarios de KNOWN_VALUES. Devolve o numero de falhas.
     fails = 0
     # S-box: valores citados no FIPS-197 (5.1.1) e inversa consistente
     for x, y in ((0x00, 0x63), (0x53, 0xED), (0xFF, 0x16)):
@@ -278,9 +300,10 @@ def selftest():
     print("SELFTEST PASSED" if fails == 0 else f"SELFTEST FAILED ({fails} falhas)")
     return fails
 
-# ---------------------------------------------------------------------------
-# Vetores para os testbenches (lidos com $readmemh: um valor hex por token)
-# ---------------------------------------------------------------------------
+# ---------------- vetores para os testbenches ----------------
+# Arquivos .hex lidos pelos testbenches com $readmemh: um valor hexadecimal
+# por token, comentarios com //. A semente fixa faz o make vectors gerar
+# sempre os mesmos arquivos (git diff vazio se nada mudou no modelo).
 
 VECTORS_HEADER = "// Gerado por scripts/aes_ref.py --vectors (make vectors). Nao editar a mao.\n"
 N_RANDOM_KEYS = 20      # chaves aleatorias extras para o teste da expansao de chave
@@ -297,6 +320,8 @@ def _write(outdir, fname, lines):
 
 def write_vectors(outdir):
     """Gera todos os arquivos lidos pelos testbenches em outdir."""
+    # Cada bloco abaixo escreve um arquivo .hex: tabelas da S-box, rodadas
+    # da cifra e da inversa, base do MixColumns, expansao de chave e trios.
     os.makedirs(outdir, exist_ok=True)
     aes128 = FIPS_VECTORS[:2]                   # Apendices B e C.1
     rng = random.Random(RANDOM_SEED)
@@ -368,6 +393,8 @@ def write_vectors(outdir):
 
 
 def main():
+    # Linha de comando: sem opcoes roda o auto-teste; --vectors, --trace,
+    # --keyexp e --sbox geram as outras saidas.
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--key", default=FIPS_VECTORS[0][1], help="chave em hex (128/192/256 bits)")
     ap.add_argument("--pt", default=FIPS_VECTORS[0][2], help="texto claro em hex (128 bits)")

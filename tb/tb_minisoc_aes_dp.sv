@@ -1,7 +1,12 @@
 // ============================================================================
 // tb_minisoc_aes_dp - testbench self-checking do datapath AES-128
 // ----------------------------------------------------------------------------
-// Cifra e cifra inversa de blocos completos, nos dois sentidos:
+// TESTE DE INTEGRACAO
+//   Testa o minisoc_aes_dp como uma caixa-preta: entra chave e bloco, sai o
+//   bloco cifrado ou decifrado. Por dentro estao a expansao de chave e as 7
+//   transformacoes, ja testadas uma a uma nos outros testbenches.
+//
+// O QUE CONFERE (cifra e cifra inversa, nos dois sentidos)
 //   1. protocolo depois do reset: start sem chave carregada e ignorado;
 //   2. vetores do enunciado (FIPS-197, Apendices C.1 e B): cifra pt -> ct e
 //      cifra inversa ct -> pt;
@@ -14,12 +19,14 @@
 //   6. protocolo: latencia de 11 ciclos, done de 1 ciclo, block_o estavel,
 //      start durante busy ignorado, key_load durante busy ignorado e
 //      key_load com prioridade sobre start no mesmo ciclo.
+//   Total: 2327 checagens.
 //
 // Estimulos mudam na borda de descida; o DUT amostra na de subida.
 // Saida: imprime "TEST PASSED" ou "TEST FAILED"; o Makefile decide pelo log.
 // ============================================================================
 module tb_minisoc_aes_dp;
 
+    // ---------------- parametros, sinais e DUT ----------------
     localparam int N_VEC   = 202;
     localparam int LATENCY = 11;   // ciclos do start ao done (e do key_load ao key_ready)
 
@@ -48,8 +55,11 @@ module tb_minisoc_aes_dp;
         .block_o     (blk_o)
     );
 
+    // Clock de 10 ns de periodo.
     always #5 clk = ~clk;   // 100 MHz na simulacao (timescale 1 ns)
 
+    // Contador de pulsos de done: permite conferir que um bloco gera
+    // exatamente UM done (teste "start durante busy").
     int done_count = 0;     // quantos pulsos de done ja aconteceram
     always @(posedge clk) if (done) done_count++;
 
@@ -59,6 +69,7 @@ module tb_minisoc_aes_dp;
     int    checks = 0;
     int    errors = 0;
 
+    // ---------------- tarefas de comparacao ----------------
     task automatic check(input string what, input logic [127:0] got, input logic [127:0] expected);
         checks++;
         if (got !== expected) begin
@@ -75,6 +86,9 @@ module tb_minisoc_aes_dp;
         end
     endtask
 
+    // ---------------- tarefas de estimulo ----------------
+    // load_key: pulso de 1 ciclo em key_load e espera key_ready, contando
+    // os ciclos (tem que dar 11: rk0 + 10 chaves).
     // Carrega uma chave e espera key_ready, conferindo a latencia
     task automatic load_key(input logic [127:0] k);
         int lat;
@@ -91,6 +105,12 @@ module tb_minisoc_aes_dp;
         check_int("latencia do key_load ao key_ready (ciclos)", lat, LATENCY);
     endtask
 
+    // run: processa um bloco e confere o PROTOCOLO, alem de devolver o
+    // resultado em "out":
+    //   - busy sobe logo depois do start;
+    //   - done chega 11 ciclos depois do start;
+    //   - done dura so 1 ciclo;
+    //   - block_o fica estavel depois do done.
     // Processa um bloco e confere o protocolo: busy, latencia, done de 1 ciclo
     // e block_o estavel depois do done
     task automatic run(input string tag, input logic [127:0] in, input logic dec,
@@ -115,6 +135,8 @@ module tb_minisoc_aes_dp;
         check({tag, ": block_o estavel apos o done"}, blk_o, out);
     endtask
 
+    // both_ways: carrega a chave, cifra pt (tem que dar ct) e decifra ct
+    // (tem que voltar a pt).
     // Cifra e decifra um trio conhecido
     task automatic both_ways(input string tag, input logic [127:0] k,
                              input logic [127:0] pt, input logic [127:0] ct);
@@ -126,6 +148,8 @@ module tb_minisoc_aes_dp;
         check({tag, " inversa"}, got, pt);
     endtask
 
+    // ---------------- vetores dos padroes ----------------
+    // Vetores do enunciado da semana 4 (FIPS-197, Apendices B e C.1).
     localparam logic [127:0] KEY_B  = 128'h2b7e151628aed2a6abf7158809cf4f3c;
     localparam logic [127:0] PT_B   = 128'h3243f6a8885a308d313198a2e0370734;
     localparam logic [127:0] CT_B   = 128'h3925841d02dc09fbdc118597196a0b32;
@@ -140,6 +164,7 @@ module tb_minisoc_aes_dp;
     logic [127:0] got;
     int           done_before;
 
+    // ---------------- partes 1 a 4: reset e vetores dos padroes ----------------
     initial begin
 `ifdef FSDB
         $fsdbDumpfile("waves.fsdb");
@@ -154,6 +179,7 @@ module tb_minisoc_aes_dp;
         sp_pt[3] = 128'hf69f2445df4f9b17ad2b417be66c3710;  sp_ct[3] = 128'h7b0c785e27e8ad3f8223207104725dd4;
 
         // 1. protocolo depois do reset
+        // Sem chave carregada (key_ready = 0), um start nao pode iniciar nada.
         $display("-- 1. reset: sem chave carregada, o start e ignorado");
         repeat (2) @(negedge clk);
         rst_n = 1'b1;
@@ -172,6 +198,8 @@ module tb_minisoc_aes_dp;
         $display("C.1: %032h -> %032h -> %032h", PT_C1, CT_C1, PT_C1);
 
         // 3. NIST SP 800-38A: uma chave, varios blocos seguidos
+        // Uma unica carga de chave para 8 blocos: e assim que o engine vai
+        // usar o dp (a mesma chave para ate 256 blocos).
         $display("-- 3. NIST SP 800-38A F.1.1 e F.1.2 (ECB-AES128): 4 blocos com a mesma chave");
         load_key(KEY_B);
         for (int i = 0; i < 4; i++) begin
@@ -189,7 +217,9 @@ module tb_minisoc_aes_dp;
         both_ways("AESAVS pt=80..00", 128'h0, 128'h80000000000000000000000000000000,
                   128'h3ad78e726c1ec02b7ebfe92b23d9ec34);
 
+        // ---------------- parte 5: 202 trios do modelo ----------------
         // 5. 202 trios do modelo de referencia
+        // vec[3i] = chave, vec[3i+1] = texto claro, vec[3i+2] = texto cifrado.
         $display("-- 5. %0d trios do modelo de referencia, nos dois sentidos", N_VEC);
         if (!$value$plusargs("VEC_DIR=%s", vec_dir)) vec_dir = "tb/vectors";
         $readmemh({vec_dir, "/aes128_vectors.hex"}, vec);
@@ -201,9 +231,12 @@ module tb_minisoc_aes_dp;
             both_ways($sformatf("trio %0d", i), vec[3*i], vec[3*i+1], vec[3*i+2]);
         $display("%0d trios conferidos", N_VEC);
 
+        // ---------------- parte 6: protocolo ----------------
         // 6. protocolo
         $display("-- 6. protocolo: start e key_load fora de hora");
         load_key(KEY_B);
+        // (a) Start durante busy: tem que ser ignorado. O resultado e o do
+        // primeiro bloco e acontece um unico done.
         // start durante busy: ignorado, um unico done, resultado do primeiro bloco
         done_before = done_count;
         @(negedge clk); start = 1'b1; decrypt = 1'b0; blk = PT_B;
@@ -216,6 +249,8 @@ module tb_minisoc_aes_dp;
         repeat (15) @(negedge clk);
         check_int("start durante busy: pulsos de done", done_count - done_before, 1);
         check_int("start durante busy: busy no fim", int'(busy), 0);
+        // (b) key_load durante busy: tem que ser ignorado; a tabela de chaves
+        // nao muda e o bloco seguinte ainda usa a chave antiga.
         // key_load durante busy: ignorado, a tabela de chaves nao muda
         @(negedge clk); start = 1'b1; blk = PT_B;
         @(negedge clk); start = 1'b0;
@@ -227,6 +262,8 @@ module tb_minisoc_aes_dp;
         check_int("key_load durante busy: key_ready continua 1", int'(key_ready), 1);
         run("chave preservada", PT_B, 1'b0, got);
         check("key_load durante busy: chave preservada", got, CT_B);
+        // (c) start e key_load no mesmo ciclo: a carga de chave vence; o
+        // start e ignorado e key_ready cai durante a nova expansao.
         // start e key_load no mesmo ciclo: a carga de chave vence
         @(negedge clk); start = 1'b1; key_load = 1'b1; key = KEY_C1; blk = PT_C1;
         @(negedge clk); start = 1'b0; key_load = 1'b0;
@@ -243,6 +280,7 @@ module tb_minisoc_aes_dp;
         $finish;
     end
 
+    // ---------------- guarda contra travamento ----------------
     initial begin   // guarda contra travamento
         #5_000_000;   // 5 ms
         $display("ERRO: tempo esgotado");
