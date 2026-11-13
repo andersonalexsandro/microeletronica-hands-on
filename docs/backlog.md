@@ -62,9 +62,9 @@ O backlog é atualizado no início de cada semana. Cada item tem um identificado
 
 | ID | Item | Critério de pronto | Status |
 | --- | --- | --- | --- |
-| B04-1 | `minisoc_aes_key_exp` | 11 round keys; escolha pré-computada × on-the-fly justificada (área e ordem inversa na decriptação) | a fazer |
-| B04-2 | `minisoc_aes_dp` | Cifra e cifra inversa de um bloco, com a interface de controle da microarquitetura (start/done) | a fazer |
-| B04-3 | Testbench com os vetores do padrão | Ap. B e C.1 nos dois sentidos; lint sem erros | a fazer |
+| B04-1 | `minisoc_aes_key_exp` | 11 round keys; escolha pré-computada × on-the-fly justificada (área e ordem inversa na decriptação) | feito (pré-computada) |
+| B04-2 | `minisoc_aes_dp` | Cifra e cifra inversa de um bloco, com a interface de controle da microarquitetura (start/done) | feito |
+| B04-3 | Testbench com os vetores do padrão | Ap. B e C.1 nos dois sentidos; lint sem erros | feito (2327 + 301 checagens) |
 
 ### Semana 5 — SPI front-end e PLL mock (20/11)
 

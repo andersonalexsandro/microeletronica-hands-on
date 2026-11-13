@@ -6,8 +6,8 @@ A especificação funcional é o **Block Guide MiniSoC AES v1.0.0**, o mesmo da 
 
 | | |
 | --- | --- |
-| **Semana atual** | 3 — microarquitetura e transformações de rodada |
-| **Situação** | microarquitetura v1.0 do sistema e todas as transformações de rodada (diretas e inversas) testadas contra o FIPS-197 |
+| **Semana atual** | 4 — expansão de chave e datapath AES-128 |
+| **Situação** | datapath AES-128 completo (cifra e cifra inversa, 11 ciclos por bloco) e microarquitetura v1.0 do sistema; 4 testbenches, 8825 checagens |
 | **Especificação** | [`docs/spec/`](docs/spec/) — Block Guide MiniSoC AES v1.0.0 |
 | **Microarquitetura** | [`docs/architecture/microarquitetura_v1.0.md`](docs/architecture/microarquitetura_v1.0.md) |
 | **Backlog** | [`docs/backlog.md`](docs/backlog.md) |
@@ -97,8 +97,12 @@ A organização de `rtl/` segue a seção 10 do Block Guide. As pastas marcadas 
 | [`rtl/minisoc_aes/minisoc_aes_inv_sub_bytes.sv`](rtl/minisoc_aes/minisoc_aes_inv_sub_bytes.sv) | InvSubBytes: 16 S-boxes inversas |
 | [`rtl/minisoc_aes/minisoc_aes_inv_shift_rows.sv`](rtl/minisoc_aes/minisoc_aes_inv_shift_rows.sv) | InvShiftRows: a linha `r` gira `r` bytes para a direita |
 | [`rtl/minisoc_aes/minisoc_aes_inv_mix_columns.sv`](rtl/minisoc_aes/minisoc_aes_inv_mix_columns.sv) | InvMixColumns: cada coluna vezes a matriz `0e 0b 0d 09` |
+| [`rtl/minisoc_aes/minisoc_aes_key_exp.sv`](rtl/minisoc_aes/minisoc_aes_key_exp.sv) | Expansão de chave AES-128: as 11 chaves de rodada pré-computadas numa tabela, 11 ciclos por chave |
+| [`rtl/minisoc_aes/minisoc_aes_dp.sv`](rtl/minisoc_aes/minisoc_aes_dp.sv) | Datapath AES-128 iterativo: cifra e cifra inversa de um bloco em 11 ciclos, interface `start`/`done` |
 | [`tb/tb_minisoc_aes_sbox.sv`](tb/tb_minisoc_aes_sbox.sv) | S-box e S-box inversa nas 256 entradas, contra as tabelas de referência e `InvS(S(x)) = x` |
 | [`tb/tb_minisoc_aes_round.sv`](tb/tb_minisoc_aes_round.sv) | Testes unitários das 7 transformações: rodadas dos Apêndices B e C.1 nos dois sentidos, base de MixColumns e propriedades em 1000 estados aleatórios |
+| [`tb/tb_minisoc_aes_key_exp.sv`](tb/tb_minisoc_aes_key_exp.sv) | Expansão de chave: Apêndices A.1 e C.1, 22 chaves do modelo, latência e reset |
+| [`tb/tb_minisoc_aes_dp.sv`](tb/tb_minisoc_aes_dp.sv) | Datapath nos dois sentidos: FIPS-197, SP 800-38A, AESAVS, 202 trios do modelo e protocolo `start`/`done` |
 | [`scripts/aes_ref.py`](scripts/aes_ref.py) | Modelo de referência do AES-128/192/256 em Python puro: vetores do padrão, estado rodada a rodada, expansão de chave e geração dos vetores dos testbenches |
 
 ---
