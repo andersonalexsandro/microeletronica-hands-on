@@ -14,3 +14,6 @@ rtl/minisoc_aes/minisoc_aes_inv_sbox.sv
 rtl/minisoc_aes/minisoc_aes_inv_sub_bytes.sv
 rtl/minisoc_aes/minisoc_aes_inv_shift_rows.sv
 rtl/minisoc_aes/minisoc_aes_inv_mix_columns.sv
+// minisoc_aes: expansao de chave e datapath AES-128 (semana 4)
+rtl/minisoc_aes/minisoc_aes_key_exp.sv
+rtl/minisoc_aes/minisoc_aes_dp.sv
