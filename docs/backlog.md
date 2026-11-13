@@ -17,7 +17,7 @@ O backlog é atualizado no início de cada semana. Cada item tem um identificado
 | R-3 | Interfaces de topo e dos modelos do PLL e da memória precisam ser idênticas às do Block Guide | Retrabalho no RTL e no ambiente do verificador se divergirem | Nomes de módulos, arquivos e sinais seguem o Block Guide; a confirmação final é a primeira execução do ambiente DV sobre o RTL v1.0 (sem. 7) | aberto |
 | R-4 | Verificador parceiro ainda não definido | Pontos de contato das semanas 3, 7, 10 e 12 | Confirmar a dupla com o instrutor | aberto |
 | R-5 | Ambiguidades do Block Guide: 17 pontos em aberto, conferidos com o texto da v1.0.0 (lista em [`reports/semana_02.md`](reports/semana_02.md#dúvidas-sobre-o-block-guide-seções-1-a-3-e-8)) | Microarquitetura (sem. 3), SPI (sem. 5), AES engine (sem. 6) e modos da sem. 10 (CFB, PCBC) | Levar ao ponto de acompanhamento com o instrutor | aberto |
-| R-6 | O Block Guide fixa `clk` em 2 GHz e permite `sys_clk` de 2 GHz (divisor /1) | Uma rodada AES por ciclo e o banco de registradores dificilmente fecham timing nessas frequências (sem. 3 e 8) | Confirmar com o instrutor as frequências-alvo da síntese antes de fechar a microarquitetura | aberto |
+| R-6 | O Block Guide fixa `clk` em 2 GHz e permite `sys_clk` de 2 GHz (divisor /1) | Uma rodada AES por ciclo e o banco de registradores dificilmente fecham timing nessas frequências (sem. 3 e 8) | Confirmar com o instrutor as frequências-alvo da síntese; a microarquitetura prevê dividir a rodada em 2 estágios se for preciso | aberto |
 
 ---
 
@@ -52,11 +52,11 @@ O backlog é atualizado no início de cada semana. Cada item tem um identificado
 
 | ID | Item | Critério de pronto | Status |
 | --- | --- | --- | --- |
-| B03-1 | Documento de microarquitetura v1.0 (`docs/architecture/`) | Diagrama interno, AES iterativo (ou alternativa justificada), FSM do `minisoc_aes_top`, CDC por toggle (seção 5.3), sequência de reset (seção 4.2) | a fazer |
-| B03-2 | MixColumns e AddRoundKey | Conferem com o FIPS-197 Ap. B | a fazer |
-| B03-3 | InvMixColumns | Confere com o FIPS-197 Ap. C.1 (cifra inversa); InvSubBytes e InvShiftRows já feitos (B02-5) | a fazer |
-| B03-4 | Testes unitários de todas as transformações | Ap. B (cifragem) e Ap. C.1 (cifragem inversa) em `make test` | a fazer |
-| B03-5 | Defesa curta e apresentação ao verificador parceiro | Microarquitetura aprovada pelo instrutor | a fazer |
+| B03-1 | Documento de microarquitetura v1.0 (`docs/architecture/`) | Diagrama interno, AES iterativo (ou alternativa justificada), FSM do `minisoc_aes_top`, CDC por toggle (seção 5.3), sequência de reset (seção 4.2) | feito (`microarquitetura_v1.0.md`) |
+| B03-2 | MixColumns e AddRoundKey | Conferem com o FIPS-197 Ap. B | feito |
+| B03-3 | InvMixColumns | Confere com o FIPS-197 Ap. C.1 (cifra inversa); InvSubBytes e InvShiftRows já feitos (B02-5) | feito |
+| B03-4 | Testes unitários de todas as transformações | Ap. B (cifragem) e Ap. C.1 (cifragem inversa) em `make test` | feito (5425 checagens) |
+| B03-5 | Defesa curta e apresentação ao verificador parceiro | Microarquitetura aprovada pelo instrutor | a fazer (parceiro não definido, R-4) |
 
 ### Semana 4 — expansão de chave e datapath AES-128 (13/11)
 

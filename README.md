@@ -6,9 +6,10 @@ A especificação funcional é o **Block Guide MiniSoC AES v1.0.0**, o mesmo da 
 
 | | |
 | --- | --- |
-| **Semana atual** | 2 — desafio SubBytes e ShiftRows |
-| **Situação** | S-box, SubBytes e ShiftRows (e as inversas) prontos e testados contra o FIPS-197 |
+| **Semana atual** | 3 — microarquitetura e transformações de rodada |
+| **Situação** | microarquitetura v1.0 do sistema e todas as transformações de rodada (diretas e inversas) testadas contra o FIPS-197 |
 | **Especificação** | [`docs/spec/`](docs/spec/) — Block Guide MiniSoC AES v1.0.0 |
+| **Microarquitetura** | [`docs/architecture/microarquitetura_v1.0.md`](docs/architecture/microarquitetura_v1.0.md) |
 | **Backlog** | [`docs/backlog.md`](docs/backlog.md) |
 | **Relatórios semanais** | [`docs/reports/`](docs/reports/) |
 
@@ -90,11 +91,14 @@ A organização de `rtl/` segue a seção 10 do Block Guide. As pastas marcadas 
 | [`rtl/minisoc_aes/minisoc_aes_sbox.sv`](rtl/minisoc_aes/minisoc_aes_sbox.sv) | S-box (FIPS-197, Figura 7): tabela de 256 entradas, combinacional |
 | [`rtl/minisoc_aes/minisoc_aes_sub_bytes.sv`](rtl/minisoc_aes/minisoc_aes_sub_bytes.sv) | SubBytes: 16 S-boxes, uma por byte do estado |
 | [`rtl/minisoc_aes/minisoc_aes_shift_rows.sv`](rtl/minisoc_aes/minisoc_aes_shift_rows.sv) | ShiftRows: a linha `r` gira `r` bytes para a esquerda (só fiação) |
+| [`rtl/minisoc_aes/minisoc_aes_mix_columns.sv`](rtl/minisoc_aes/minisoc_aes_mix_columns.sv) | MixColumns: cada coluna vezes a matriz `02 03 01 01` em GF(2⁸), rede de XORs |
+| [`rtl/minisoc_aes/minisoc_aes_add_round_key.sv`](rtl/minisoc_aes/minisoc_aes_add_round_key.sv) | AddRoundKey: XOR do estado com a chave da rodada |
 | [`rtl/minisoc_aes/minisoc_aes_inv_sbox.sv`](rtl/minisoc_aes/minisoc_aes_inv_sbox.sv) | S-box inversa (FIPS-197, Figura 14) |
 | [`rtl/minisoc_aes/minisoc_aes_inv_sub_bytes.sv`](rtl/minisoc_aes/minisoc_aes_inv_sub_bytes.sv) | InvSubBytes: 16 S-boxes inversas |
 | [`rtl/minisoc_aes/minisoc_aes_inv_shift_rows.sv`](rtl/minisoc_aes/minisoc_aes_inv_shift_rows.sv) | InvShiftRows: a linha `r` gira `r` bytes para a direita |
+| [`rtl/minisoc_aes/minisoc_aes_inv_mix_columns.sv`](rtl/minisoc_aes/minisoc_aes_inv_mix_columns.sv) | InvMixColumns: cada coluna vezes a matriz `0e 0b 0d 09` |
 | [`tb/tb_minisoc_aes_sbox.sv`](tb/tb_minisoc_aes_sbox.sv) | S-box e S-box inversa nas 256 entradas, contra as tabelas de referência e `InvS(S(x)) = x` |
-| [`tb/tb_minisoc_aes_round.sv`](tb/tb_minisoc_aes_round.sv) | SubBytes → ShiftRows (e inversas) com os estados dos Apêndices B e C.1 e com 1000 estados aleatórios |
+| [`tb/tb_minisoc_aes_round.sv`](tb/tb_minisoc_aes_round.sv) | Testes unitários das 7 transformações: rodadas dos Apêndices B e C.1 nos dois sentidos, base de MixColumns e propriedades em 1000 estados aleatórios |
 | [`scripts/aes_ref.py`](scripts/aes_ref.py) | Modelo de referência do AES-128/192/256 em Python puro: vetores do padrão, estado rodada a rodada, expansão de chave e geração dos vetores dos testbenches |
 
 ---
