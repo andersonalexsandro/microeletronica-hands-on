@@ -1,9 +1,16 @@
 # ============================================================
-# Tudo que as ferramentas geram vai para build/ (ver Makefile)
+# .gitignore - o que o Git NAO guarda
+# Regra do projeto: o repositorio guarda fontes, scripts e
+# relatorios; tudo que uma ferramenta gera e refeito com make.
 # ============================================================
+
+# Tudo que as ferramentas geram vai para build/ (ver Makefile)
 build/
 
+# ------------------------------------------------------------
 # Restos caso alguma ferramenta seja rodada fora do Makefile
+# ------------------------------------------------------------
+# Synopsys vlogan e VCS (compilacao e simulacao)
 csrc/
 simv
 simv.daidir/
@@ -13,21 +20,27 @@ work.lib++/
 64/
 ucli.key
 vc_hdrs.h
+.vlogan*
+# Synopsys Verdi e DVE (visualizacao de ondas e debug)
 novas*
 verdi*/
-.vlogan*
+DVEfiles/
+# Formas de onda: fsdb (Verdi), vpd (DVE), vcd (GTKWave)
 *.fsdb
 *.vpd
 *.vcd
+# Icarus Verilog (programa compilado) e Verilator (pasta de trabalho)
 *.vvp
 obj_dir/
-DVEfiles/
+# Design Compiler (sintese, semanas 8 e 13)
 command.log
 default.svf
 alib-*/
+# Formality (equivalencia formal, semanas 9, 10 e 13)
 FM_WORK/
 fm_shell_command.log
 formality_svf.txt
+# Python (cache do modelo de referencia)
 __pycache__/
 
 # ============================================================

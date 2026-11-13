@@ -66,6 +66,7 @@ def ginv(b):
 
 
 def rotl8(b, n):
+    # Gira os 8 bits de b n posicoes para a esquerda; o bit que sai volta pela direita.
     return ((b << n) | (b >> (8 - n))) & 0xFF
 
 
@@ -74,6 +75,9 @@ def affine(b):
     return b ^ rotl8(b, 1) ^ rotl8(b, 2) ^ rotl8(b, 3) ^ rotl8(b, 4) ^ 0x63
 
 
+# A S-box sai da definicao (inverso + afim), nao de uma tabela copiada. E esta
+# tabela que gera tb/vectors/sbox.hex e confere o case de minisoc_aes_sbox.sv.
+# A inversa e a mesma tabela lida ao contrario: se S(x) = s, entao InvS(s) = x.
 SBOX = [affine(ginv(x)) for x in range(256)]
 INV_SBOX = [0] * 256
 for _x, _s in enumerate(SBOX):
@@ -85,10 +89,12 @@ for _x, _s in enumerate(SBOX):
 # mesma ordem do RTL, onde o byte 0 fica nos bits [127:120].
 
 def sub_bytes(s):
+    # SubBytes: cada um dos 16 bytes passa pela S-box (RTL: minisoc_aes_sub_bytes).
     return [SBOX[b] for b in s]
 
 
 def inv_sub_bytes(s):
+    # InvSubBytes: cada byte passa pela S-box inversa (RTL: minisoc_aes_inv_sub_bytes).
     return [INV_SBOX[b] for b in s]
 
 
@@ -100,6 +106,8 @@ def shift_rows(s):
 
 
 def inv_shift_rows(s):
+    # Contrario do shift_rows: a linha r gira r posicoes para a DIREITA,
+    # s'[r,c] = s[r, (c - r) mod 4] (RTL: minisoc_aes_inv_shift_rows).
     return [s[r + 4 * ((c - r) % 4)] for c in range(4) for r in range(4)]
 
 
@@ -117,25 +125,32 @@ def _mix(s, m):
     return out
 
 
+# Matrizes fixas do FIPS-197: 02 03 01 01 na cifra (5.1.3) e 0e 0b 0d 09 na
+# inversa (5.3.3), aqui em decimal (14 11 13 9). Cada linha e a anterior girada.
 MIX = [[2, 3, 1, 1], [1, 2, 3, 1], [1, 1, 2, 3], [3, 1, 1, 2]]
 INV_MIX = [[14, 11, 13, 9], [9, 14, 11, 13], [13, 9, 14, 11], [11, 13, 9, 14]]
 
 
 def mix_columns(s):
+    # MixColumns (RTL: minisoc_aes_mix_columns).
     return _mix(s, MIX)
 
 
 def inv_mix_columns(s):
+    # InvMixColumns: desfaz o mix_columns (RTL: minisoc_aes_inv_mix_columns).
     return _mix(s, INV_MIX)
 
 
 def add_round_key(s, rk):
+    # AddRoundKey: XOR byte a byte com a chave da rodada. Aplicar duas vezes
+    # volta ao original, por isso a mesma funcao serve a cifra e a inversa.
     return [a ^ b for a, b in zip(s, rk)]
 
 # ---------------- expansao de chave ----------------
 # FIPS-197 5.2. Gera as palavras w[0..4*(Nr+1)-1] (44 palavras no AES-128);
 # a chave de rodada r e w[4r .. 4r+3].
 
+# Rcon[i] = 02^(i-1) em GF(2^8): 01, 02, 04, ..., 80, 1b, 36. O indice 0 nao e usado.
 RCON = [0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36]
 
 
@@ -161,6 +176,8 @@ def key_expansion(key):
 
 
 def round_key(w, rnd):
+    # Chave da rodada rnd: junta as palavras w[4*rnd .. 4*rnd+3] em 16 bytes
+    # (no RTL, e a posicao rnd da tabela rk_q do minisoc_aes_key_exp).
     return [b for word in w[4 * rnd:4 * rnd + 4] for b in word]
 
 # ---------------- cifra e cifra inversa ----------------
@@ -267,6 +284,7 @@ KNOWN_VALUES = [
 
 
 def hx(b):
+    # Bytes (ou lista de inteiros) para texto hexadecimal: [0x2b, 0x7e] -> '2b7e'.
     return bytes(b).hex()
 
 
@@ -312,6 +330,7 @@ RANDOM_SEED = 2026      # semente fixa: make vectors gera sempre os mesmos arqui
 
 
 def _write(outdir, fname, lines):
+    # Escreve um arquivo .hex: cabecalho padrao e uma entrada por linha.
     with open(os.path.join(outdir, fname), "w") as f:
         f.write(VECTORS_HEADER)
         f.write("\n".join(lines) + "\n")

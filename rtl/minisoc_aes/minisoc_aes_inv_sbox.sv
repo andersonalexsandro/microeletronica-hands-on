@@ -11,9 +11,15 @@
 //   e e conferida pelo tb_minisoc_aes_sbox contra tb/vectors/inv_sbox.hex e
 //   pela propriedade InvS(S(x)) = x nos 256 valores.
 //
-// ONDE FICA NO PROJETO
-//   Semanas 2 e 3. 16 instancias no minisoc_aes_inv_sub_bytes, usado na
-//   cifra inversa (decriptacao nos modos ECB, CBC e PCBC).
+// PARA QUE SERVE
+//   Decifrar: a cifra inversa precisa desfazer o SubBytes de cada rodada.
+//   A expansao de chave nao usa a inversa (as chaves sao as mesmas nos dois
+//   sentidos, so lidas em ordem contraria).
+//
+// ONDE FICA NO SISTEMA (semanas 2 e 3)
+//   minisoc_aes_dp > u_isb (minisoc_aes_inv_sub_bytes) > 16 instancias:
+//   g_inv_sbox[0..15].u_inv_sbox. Usada na decriptacao dos modos ECB, CBC e
+//   PCBC; os modos CFB, OFB e CTR so usam a cifra direta.
 // ============================================================================
 module minisoc_aes_inv_sbox (
     input  logic [7:0] data_i,   // byte de entrada

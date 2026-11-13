@@ -22,9 +22,18 @@
 //   Alternativa nao usada: calcular o inverso em hardware (campo composto),
 //   com menos area, mas bem mais dificil de ler e de depurar.
 //
-// ONDE FICA NO PROJETO
-//   Semana 2. Instancias: 16 no minisoc_aes_sub_bytes e 4 no SubWord do
-//   minisoc_aes_key_exp (semana 4). E puramente combinacional.
+// PARA QUE SERVE
+//   Da ao AES a "confusao": a relacao entre chave, texto claro e texto
+//   cifrado deixa de ser linear. E usada em dois lugares: no SubBytes de cada
+//   rodada da cifra e no SubWord da expansao de chave.
+//
+// ONDE FICA NO SISTEMA (semana 2; usada no datapath a partir da semana 4)
+//   minisoc_top (sem. 7) > minisoc_aes_top (sem. 6) > minisoc_aes_dp >
+//     u_sb (minisoc_aes_sub_bytes) ..... 16 instancias: g_sbox[0..15].u_sbox
+//     u_key_exp (minisoc_aes_key_exp) ..  4 instancias: g_subword[0..3].u_sbox
+//   A cifra inversa usa a minisoc_aes_inv_sbox (mais 16 instancias). No
+//   total o datapath tem 36 tabelas. E puramente combinacional: sem clock e
+//   sem reset.
 // ============================================================================
 module minisoc_aes_sbox (
     input  logic [7:0] data_i,   // byte de entrada
