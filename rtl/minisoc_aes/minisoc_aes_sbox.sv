@@ -1,63 +1,23 @@
 // ============================================================================
-// minisoc_aes_sbox - S-box do AES (FIPS-197, secao 5.1.1, Figura 7)
-// ----------------------------------------------------------------------------
-// O QUE FAZ
-//   Troca 1 byte por outro, segundo uma tabela fixa de 256 valores.
-//   Exemplos do FIPS-197: S(00) = 63, S(53) = ed, S(ff) = 16.
+// minisoc_aes_sbox - S-box do AES
+// ============================================================================
+// O QUE E
+//   Uma tabela fixa que troca 1 byte por outro.
+//   Mesma entrada -> sempre a mesma saida. Ex.: entra 53, sai ed.
+//   E a etapa que "embaralha" os dados no AES.
 //
-// DE ONDE VEM A TABELA (a matematica, so para entender)
-//   S(x) = afim(x^-1), em duas etapas:
-//     1. x^-1: o inverso de x em GF(2^8), o corpo finito de 256 elementos do
-//        AES (por convencao, o inverso de 00 e 00). Ex.: 53^-1 = ca.
-//     2. afim: b ^ rotl(b,1) ^ rotl(b,2) ^ rotl(b,3) ^ rotl(b,4) ^ 63,
-//        onde rotl gira os bits a esquerda. Ex.: afim(ca) = ed.
-//   E a UNICA etapa nao linear do AES: sem ela, a cifra inteira seria uma
-//   sequencia de XORs e permutacoes, que se resolve com algebra.
-//
-// COMO FOI IMPLEMENTADA
-//   Como tabela: um case com as 256 entradas da Figura 7. A tabela foi gerada
-//   pelo modelo de referencia (scripts/aes_ref.py), que a calcula pela
-//   definicao acima, e e conferida pelo tb_minisoc_aes_sbox contra o arquivo
-//   tb/vectors/sbox.hex e contra os valores citados no FIPS-197.
-//   Alternativa nao usada: calcular o inverso em hardware (campo composto),
-//   com menos area, mas bem mais dificil de ler e de depurar.
-//
-// PARA QUE SERVE
-//   Da ao AES a "confusao": a relacao entre chave, texto claro e texto
-//   cifrado deixa de ser linear. E usada em dois lugares: no SubBytes de cada
-//   rodada da cifra e no SubWord da expansao de chave.
-//
-// ONDE FICA NO SISTEMA (semana 2; usada no datapath a partir da semana 4)
-//   minisoc_top (sem. 7) > minisoc_aes_top (sem. 6) > minisoc_aes_dp >
-//     u_sb (minisoc_aes_sub_bytes) ..... 16 instancias: g_sbox[0..15].u_sbox
-//     u_key_exp (minisoc_aes_key_exp) ..  4 instancias: g_subword[0..3].u_sbox
-//   A cifra inversa usa a minisoc_aes_inv_sbox (mais 16 instancias). No
-//   total o datapath tem 36 tabelas. E puramente combinacional: sem clock e
-//   sem reset.
+// ENTRADAS E SAIDAS
+//   data_i [7:0]  entrada  byte a ser trocado (endereco da tabela)
+//   data_o [7:0]  saida    byte trocado (valor guardado na tabela)
 // ============================================================================
 module minisoc_aes_sbox (
     input  logic [7:0] data_i,   // byte de entrada
-    output logic [7:0] data_o    // S(data_i)
+    output logic [7:0] data_o    // byte de saida
 );
 
-    // ---------------- tabela de 256 entradas ----------------
-    // always_comb: bloco de logica COMBINACIONAL. O simulador o reavalia toda
-    // vez que data_i muda; nao ha clock nem memoria.
-    // case (data_i): escolhe a linha pelo valor do byte de entrada. Cada linha
-    // "8'hXY: data_o = 8'hZW;" diz: se a entrada vale XY, a saida vale ZW.
-    // (8'h53 = literal de 8 bits escrito em hexadecimal.)
-    //
-    // POR QUE NAO HA "default": as 256 combinacoes possiveis de 8 bits estao
-    // listadas, entao o case e COMPLETO: todo valor de entrada cai numa linha
-    // e data_o sempre recebe valor. Assim a sintese nao infere LATCH (um
-    // elemento de memoria indesejado, que apareceria se algum valor de
-    // entrada deixasse data_o sem atribuicao).
-    //
-    // COMO LER A TABELA: 4 linhas do case por linha de texto, em ordem.
-    // Na sintese, a tabela inteira vira uma funcao logica de 8 entradas e 8
-    // saidas, minimizada pela ferramenta: nao ha ROM nem memoria no chip.
-    // As 256 combinacoes de data_i estao listadas: o case e completo, entao
-    // data_o recebe valor em todos os caminhos e a sintese nao infere latch.
+    // Tabela: cada "8'hXY: data_o = 8'hZW;" quer dizer "se a entrada for XY,
+    // a saida e ZW". Sao 4 linhas da tabela por linha de texto, em ordem.
+    // As 256 entradas possiveis estao todas aqui, por isso nao ha default.
     always_comb begin
         case (data_i)
             8'h00: data_o = 8'h63;  8'h01: data_o = 8'h7c;  8'h02: data_o = 8'h77;  8'h03: data_o = 8'h7b;

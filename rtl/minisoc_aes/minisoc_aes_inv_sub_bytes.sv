@@ -1,32 +1,27 @@
 // ============================================================================
-// minisoc_aes_inv_sub_bytes - transformacao InvSubBytes (FIPS-197, secao 5.3.2)
-// ----------------------------------------------------------------------------
-// O QUE FAZ
-//   E a inversa do SubBytes: troca cada um dos 16 bytes pelo valor da S-box
-//   INVERSA. Vale InvSubBytes(SubBytes(x)) = x para qualquer estado x.
+// minisoc_aes_inv_sub_bytes - InvSubBytes do AES
+// ============================================================================
+// O QUE E
+//   Passa cada um dos 16 bytes do estado pela S-box inversa.
+//   Desfaz o SubBytes: cada byte volta ao valor original, na mesma posicao.
+//   Ex.: byte 0 = d4 -> sai 19.
 //
-// ONDE FICA NO PROJETO
-//   - Semana 2 (opcional da semana) e semana 3 (transformacoes inversas).
-//   - Usado pelo minisoc_aes_dp (semana 4), dentro da rodada da cifra
-//     inversa, que so e usada para decifrar nos modos ECB, CBC e PCBC.
-//
-// NO QUE VIRA EM HARDWARE
-//   16 instancias de minisoc_aes_inv_sbox, combinacionais, lado a lado.
-//   Mesma estrutura e mesma convencao do estado do minisoc_aes_sub_bytes
-//   (byte n em state[127-8n -: 8]).
+// ENTRADAS E SAIDAS
+//   state_i [127:0]  entrada  estado com 16 bytes (byte 0 em [127:120],
+//                             byte 15 em [7:0])
+//   state_o [127:0]  saida    os 16 bytes destrocados, nas mesmas posicoes
 // ============================================================================
 module minisoc_aes_inv_sub_bytes (
-    input  logic [127:0] state_i,   // estado de entrada (16 bytes)
-    output logic [127:0] state_o    // estado com InvS(byte) em cada posicao
+    input  logic [127:0] state_i,
+    output logic [127:0] state_o
 );
 
-    // ---------------- 16 S-boxes inversas, uma por byte ----------------
-    // Mesmo generate do SubBytes: 16 copias criadas na elaboracao, com os
-    // nomes g_inv_sbox[0].u_inv_sbox ... g_inv_sbox[15].u_inv_sbox.
+    // 16 S-boxes inversas, uma por byte (n = 0 a 15).
+    // O "for (genvar ...)" cria 16 copias do hardware; nao e um laco no tempo.
     for (genvar n = 0; n < 16; n++) begin : g_inv_sbox
         minisoc_aes_inv_sbox u_inv_sbox (
             .data_i (state_i[127-8*n -: 8]),   // byte n da entrada
-            .data_o (state_o[127-8*n -: 8])    // byte n da saida = InvS(byte n)
+            .data_o (state_o[127-8*n -: 8])    // byte n da saida
         );
     end
 

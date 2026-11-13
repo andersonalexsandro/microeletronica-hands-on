@@ -1,49 +1,23 @@
 // ============================================================================
-// minisoc_aes_inv_sbox - S-box inversa do AES (FIPS-197, secao 5.3.2, Figura 14)
-// ----------------------------------------------------------------------------
-// O QUE FAZ
-//   Desfaz a S-box: InvS(S(x)) = x para todo byte x.
-//   Exemplos: InvS(63) = 00, InvS(ed) = 53.
+// minisoc_aes_inv_sbox - S-box inversa do AES
+// ============================================================================
+// O QUE E
+//   A tabela que desfaz a S-box: devolve o byte original.
+//   Se a S-box troca 53 por ed, esta troca ed por 53.
+//   So e usada para decifrar.
 //
-// COMO FOI IMPLEMENTADA
-//   Mesma estrutura da minisoc_aes_sbox: um case com as 256 entradas da
-//   Figura 14, puramente combinacional. A tabela vem do modelo de referencia
-//   e e conferida pelo tb_minisoc_aes_sbox contra tb/vectors/inv_sbox.hex e
-//   pela propriedade InvS(S(x)) = x nos 256 valores.
-//
-// PARA QUE SERVE
-//   Decifrar: a cifra inversa precisa desfazer o SubBytes de cada rodada.
-//   A expansao de chave nao usa a inversa (as chaves sao as mesmas nos dois
-//   sentidos, so lidas em ordem contraria).
-//
-// ONDE FICA NO SISTEMA (semanas 2 e 3)
-//   minisoc_aes_dp > u_isb (minisoc_aes_inv_sub_bytes) > 16 instancias:
-//   g_inv_sbox[0..15].u_inv_sbox. Usada na decriptacao dos modos ECB, CBC e
-//   PCBC; os modos CFB, OFB e CTR so usam a cifra direta.
+// ENTRADAS E SAIDAS
+//   data_i [7:0]  entrada  byte a ser destrocado (endereco da tabela)
+//   data_o [7:0]  saida    byte original (valor guardado na tabela)
 // ============================================================================
 module minisoc_aes_inv_sbox (
     input  logic [7:0] data_i,   // byte de entrada
-    output logic [7:0] data_o    // InvS(data_i)
+    output logic [7:0] data_o    // byte de saida
 );
 
-    // ---------------- tabela de 256 entradas ----------------
-    // always_comb: bloco de logica COMBINACIONAL. O simulador o reavalia toda
-    // vez que data_i muda; nao ha clock nem memoria.
-    // case (data_i): escolhe a linha pelo valor do byte de entrada. Cada linha
-    // "8'hXY: data_o = 8'hZW;" diz: se a entrada vale XY, a saida vale ZW.
-    // (8'h53 = literal de 8 bits escrito em hexadecimal.)
-    //
-    // POR QUE NAO HA "default": as 256 combinacoes possiveis de 8 bits estao
-    // listadas, entao o case e COMPLETO: todo valor de entrada cai numa linha
-    // e data_o sempre recebe valor. Assim a sintese nao infere LATCH (um
-    // elemento de memoria indesejado, que apareceria se algum valor de
-    // entrada deixasse data_o sem atribuicao).
-    //
-    // COMO LER A TABELA: 4 linhas do case por linha de texto, em ordem.
-    // Na sintese, a tabela inteira vira uma funcao logica de 8 entradas e 8
-    // saidas, minimizada pela ferramenta: nao ha ROM nem memoria no chip.
-    // As 256 combinacoes de data_i estao listadas: o case e completo, entao
-    // data_o recebe valor em todos os caminhos e a sintese nao infere latch.
+    // Tabela: cada "8'hXY: data_o = 8'hZW;" quer dizer "se a entrada for XY,
+    // a saida e ZW". Sao 4 linhas da tabela por linha de texto, em ordem.
+    // As 256 entradas possiveis estao todas aqui, por isso nao ha default.
     always_comb begin
         case (data_i)
             8'h00: data_o = 8'h52;  8'h01: data_o = 8'h09;  8'h02: data_o = 8'h6a;  8'h03: data_o = 8'hd5;
